@@ -8,6 +8,7 @@ use crate::views::{
     reports::Reports,
     members::Members,
     settings::Settings,
+    statements::Statements,
     transactions::Transactions,
     wallets::Wallets,
     pin::{PinSetup, PinUnlock},
@@ -46,6 +47,7 @@ pub enum Tab {
     Wallets,
     Members,
     Reports,
+    Statements,
     Settings,
 }
 
@@ -146,6 +148,7 @@ fn MainApp() -> Element {
                     Tab::Wallets      => rsx! { Wallets {} },
                     Tab::Members      => rsx! { Members {} },
                     Tab::Reports      => rsx! { Reports {} },
+                    Tab::Statements   => rsx! { Statements {} },
                     Tab::Settings     => rsx! { Settings {} },
                 }
             }
@@ -165,6 +168,7 @@ fn BottomTabBar(active_tab: Signal<Tab>) -> Element {
         (Tab::Wallets,      "👛", "Wallets"),
         (Tab::Members,      "👨‍👩‍👧", "Family"),
         (Tab::Reports,      "📊", "Reports"),
+        (Tab::Statements,   "🧾", "Statements"),
         (Tab::Settings,     "⚙️",  "Settings"),
     ];
 
@@ -177,7 +181,7 @@ fn BottomTabBar(active_tab: Signal<Tab>) -> Element {
                     let tab_clone = tab.clone();
                     rsx! {
                         button {
-                            // min-width:0 + overflow:hidden keep all 6 tabs inside the screen width
+                            // min-width:0 + overflow:hidden keep all 7 tabs inside the screen width
                             style: "flex:1 1 0; min-width:0; overflow:hidden; border:none; background:transparent; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:2px; padding:4px 0;",
                             onclick: move |_| { active_tab.set(tab_clone.clone()); },
                             span { style: "font-size:20px; line-height:1; white-space:nowrap;", "{icon}" }

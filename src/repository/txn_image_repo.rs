@@ -64,8 +64,7 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         crate::db::migrations::run(&conn).unwrap();
         let wallet = WalletRepo::create(&conn, &NewWallet {
-            name: "CASH".into(), wallet_type: WalletType::Cash, currency: Currency::VND,
-            balance: Decimal::ZERO, broker: None, icon: None, color: None, sort_order: 0,
+            name: "CASH".into(), wallet_type: WalletType::Cash, broker: None, icon: None, color: None, sort_order: 0,
         }).unwrap();
         let txn = |amount: i64| TransactionService::execute(&conn,
             &NewTransaction::opening_balance(&wallet.id, Decimal::from(amount), Currency::VND, 1)).unwrap().id;

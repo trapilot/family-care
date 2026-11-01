@@ -3,11 +3,11 @@ use crate::i18n::use_i18n;
 use rust_decimal::Decimal;
 
 use crate::app::AppState;
-use crate::models::Transaction;
-use crate::repository::TransactionRepo;
+use crate::models::{CurrencyInfo, Transaction};
+use crate::repository::{CurrencyRepo, TransactionRepo};
 use crate::services::{ReminderService, ReportService};
 use crate::views::rates::ConvertedTotal;
-use crate::views::{current_month, fmt_currency, fmt_gold, fmt_usd, fmt_vnd, month_label, ts_to_date_str};
+use crate::views::{currency_color, currency_name, current_month, fmt_currency, fmt_vnd, month_label, shown_totals, ts_to_date_str};
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
@@ -29,8 +29,11 @@ pub fn Dashboard() -> Element {
         savings: Decimal::ZERO, savings_rate: Decimal::ZERO,
         net_transfers: Decimal::ZERO,
     });
+    let money_types = use_signal(Vec::<CurrencyInfo>::new);
     let alerts    = use_signal(|| vec![]);
     let recent    = use_signal(|| vec![]);
+    // Wallet names by id, for the opening-balance rows of Recent
+    let wallet_names = use_signal(std::collections::HashMap::<String, String>::new);
     // Reminders due today, as (id, title, body, done)
     let mut due_today = use_signal(Vec::<(String, String, String, bool)>::new);
     // Unpaid monthly bills, as (id, month, title, body)
@@ -61,12 +64,17 @@ pub fn Dashboard() -> Element {
         let state = state.clone();
         let mut net_worth = net_worth.clone();
         let mut summary   = summary.clone();
+        let mut money_types = money_types;
         let mut alerts    = alerts.clone();
         let mut recent    = recent.clone();
+        let mut wallet_names = wallet_names;
         let mut load_due = load_due.clone();
         move || {
             load_due(t.lang());
             state.with_conn(|conn| {
+                if let Ok(list) = CurrencyRepo::list(conn) {
+                    money_types.set(list);
+                }
                 if let Ok(nw) = ReportService::net_worth(conn) {
                     net_worth.set(nw);
                 }
@@ -78,15 +86,20 @@ pub fn Dashboard() -> Element {
                 }
                 if let Ok(txns) = TransactionRepo::list(conn, &crate::repository::transaction_repo::TxnFilter {
                     limit: Some(5),
+                    skip_zero_opening: true,
                     ..Default::default()
                 }) {
                     recent.set(txns);
+                }
+                if let Ok(ws) = crate::repository::WalletRepo::list_active(conn) {
+                    wallet_names.set(ws.into_iter().map(|w| (w.id, w.name)).collect());
                 }
             });
         }
     });
 
     let s = summary.read();
+    let worth_cards = shown_totals(&money_types.read(), net_worth.read().vnd, net_worth.read().usd, net_worth.read().gold);
 
     rsx! {
         div {
@@ -101,10 +114,14 @@ pub fn Dashboard() -> Element {
 
             // ── Net Worth Cards ──
             div {
-                style: "display:grid; grid-template-columns:repeat(3,1fr); gap:10px;",
-                NetWorthCard { label: "VND", value: fmt_vnd(net_worth.read().vnd),    color: "#6366f1" }
-                NetWorthCard { label: "USD", value: fmt_usd(net_worth.read().usd),    color: "#10b981" }
-                NetWorthCard { label: "GOLD", value: fmt_gold(net_worth.read().gold), color: "#f59e0b" }
+                style: "display:grid; grid-template-columns:repeat({worth_cards.len()},1fr); gap:10px;",
+                for (cur, total) in worth_cards.iter() {
+                    NetWorthCard {
+                        label: currency_name(&t, &money_types.read(), cur),
+                        value: fmt_currency(*total, cur),
+                        color: currency_color(cur),
+                    }
+                }
             }
             ConvertedTotal { vnd: net_worth.read().vnd, usd: net_worth.read().usd, gold: net_worth.read().gold }
 
@@ -201,7 +218,13 @@ pub fn Dashboard() -> Element {
                     p { style: "font-size:13px; color:#9ca3af; text-align:center; padding:16px 0;", {t.t("No transactions yet")} }
                 }
                 for txn in recent.read().iter() {
-                    RecentTxnRow { txn: txn.clone() }
+                    RecentTxnRow {
+                        txn: txn.clone(),
+                        // An opening balance says which wallet it started
+                        wallet_name: (txn.txn_type == crate::models::TransactionType::OpeningBalance)
+                            .then(|| wallet_names.read().get(&txn.wallet_id).cloned())
+                            .flatten(),
+                    }
                 }
             }
         }
@@ -211,7 +234,7 @@ pub fn Dashboard() -> Element {
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 #[component]
-fn NetWorthCard(label: &'static str, value: String, color: &'static str) -> Element {
+fn NetWorthCard(label: String, value: String, color: &'static str) -> Element {
     rsx! {
         div {
             style: "background:#fff; border-radius:12px; padding:12px; box-shadow:0 1px 3px rgba(0,0,0,.08); border-top:3px solid {color};",
@@ -233,7 +256,7 @@ fn SummaryRow(label: &'static str, value: String, color: &'static str) -> Elemen
 }
 
 #[component]
-fn RecentTxnRow(txn: Transaction) -> Element {
+fn RecentTxnRow(txn: Transaction, wallet_name: Option<String>) -> Element {
     let t = use_i18n();
     let (icon, color) = match txn.txn_type {
         crate::models::TransactionType::Income    => ("↑", "#10b981"),
@@ -245,6 +268,10 @@ fn RecentTxnRow(txn: Transaction) -> Element {
     };
     let amount_str = fmt_currency(txn.amount, &txn.currency);
     let date_str   = ts_to_date_str(txn.txn_date);
+    let title = match wallet_name {
+        Some(name) => format!("{} · {name}", t.code(&txn.txn_type.to_string())),
+        None       => t.code(&txn.txn_type.to_string()),
+    };
 
     rsx! {
         div {
@@ -256,7 +283,7 @@ fn RecentTxnRow(txn: Transaction) -> Element {
                     "{icon}"
                 }
                 div {
-                    div { style: "font-size:13px; font-weight:500; color:#374151;", {t.code(&txn.txn_type.to_string())} }
+                    div { style: "font-size:13px; font-weight:500; color:#374151;", "{title}" }
                     div { style: "font-size:11px; color:#9ca3af;", "{date_str}" }
                 }
             }

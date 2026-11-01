@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use crate::error::Result;
 use crate::models::{f64_to_decimal, Currency, TransactionType};
-use crate::repository::{CategoryRepo, HoldingRepo, TransactionRepo, WalletRepo};
+use crate::repository::{CategoryRepo, HoldingRepo, TransactionRepo};
 
 // ─── Output Types ─────────────────────────────────────────────────────────────
 
@@ -269,17 +269,25 @@ impl ReportService {
     // ── Net Worth ─────────────────────────────────────────────────────────────
 
     pub fn net_worth(conn: &Connection) -> Result<NetWorth> {
-        let wallets = WalletRepo::list_active(conn)?;
+        let mut stmt = conn.prepare(
+            "SELECT b.currency, SUM(b.balance)
+             FROM wallet_balances b JOIN wallets w ON w.id = b.wallet_id
+             WHERE w.is_active = 1
+             GROUP BY b.currency",
+        )?;
+        let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, f64>(1)?)))?;
 
         let mut vnd  = Decimal::ZERO;
         let mut usd  = Decimal::ZERO;
         let mut gold = Decimal::ZERO;
 
-        for w in &wallets {
-            match w.currency {
-                Currency::VND  => vnd  += w.balance,
-                Currency::USD  => usd  += w.balance,
-                Currency::GOLD => gold += w.balance,
+        for row in rows {
+            let (code, total) = row?;
+            match code.parse::<Currency>() {
+                Ok(Currency::VND)  => vnd  = f64_to_decimal(total),
+                Ok(Currency::USD)  => usd  = f64_to_decimal(total),
+                Ok(Currency::GOLD) => gold = f64_to_decimal(total),
+                Err(_)             => {}
             }
         }
 

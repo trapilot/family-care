@@ -2,9 +2,9 @@ use dioxus::prelude::*;
 use crate::i18n::use_i18n;
 
 use crate::app::AppState;
-use crate::models::{Currency, Wallet, WalletType};
-use crate::repository::WalletRepo;
-use crate::views::{fmt_currency, fmt_gold, fmt_usd, fmt_vnd};
+use crate::models::{Currency, CurrencyInfo, Wallet, WalletType};
+use crate::repository::{CurrencyRepo, WalletRepo};
+use crate::views::{currency_color, currency_name, fmt_currency, shown_totals};
 use crate::views::rates::ConvertedTotal;
 use super::WalletView;
 
@@ -13,13 +13,16 @@ pub fn WalletList(view: Signal<WalletView>) -> Element {
     let t = use_i18n();
     let state = use_context::<AppState>();
     let wallets = use_signal(|| vec![]);
+    let money_types = use_signal(Vec::<CurrencyInfo>::new);
 
     use_effect({
         let state = state.clone();
         let mut wallets = wallets.clone();
+        let mut money_types = money_types;
         move || {
             state.with_conn(|conn| {
                 if let Ok(ws) = WalletRepo::list_active(conn) { wallets.set(ws); }
+                if let Ok(list) = CurrencyRepo::list(conn) { money_types.set(list); }
             });
         }
     });
@@ -48,9 +51,10 @@ pub fn WalletList(view: Signal<WalletView>) -> Element {
         .cloned().collect();
 
     // Net worth per currency
-    let total_vnd:  rust_decimal::Decimal = regular.iter().filter(|w| w.currency == Currency::VND).map(|w| w.balance).sum();
-    let total_usd:  rust_decimal::Decimal = regular.iter().filter(|w| w.currency == Currency::USD).map(|w| w.balance).sum();
-    let total_gold: rust_decimal::Decimal = regular.iter().filter(|w| w.currency == Currency::GOLD).map(|w| w.balance).sum();
+    let total_of = |c: Currency| -> rust_decimal::Decimal { regular.iter().map(|w| w.balance(&c)).sum() };
+    let (total_vnd, total_usd, total_gold) = (total_of(Currency::VND), total_of(Currency::USD), total_of(Currency::GOLD));
+    let cards = shown_totals(&money_types.read(), total_vnd, total_usd, total_gold);
+    let card_count = cards.len();
 
     rsx! {
         div {
@@ -69,10 +73,14 @@ pub fn WalletList(view: Signal<WalletView>) -> Element {
 
             // ── Totals ──
             div {
-                style: "display:grid; grid-template-columns:repeat(3,1fr); gap:8px;",
-                TotalCard { label: "VND",  value: fmt_vnd(total_vnd),   color: "#6366f1" }
-                TotalCard { label: "USD",  value: fmt_usd(total_usd),   color: "#10b981" }
-                TotalCard { label: "GOLD", value: fmt_gold(total_gold), color: "#f59e0b" }
+                style: "display:grid; grid-template-columns:repeat({card_count},1fr); gap:8px;",
+                for (cur, total) in cards {
+                    TotalCard {
+                        label: currency_name(&t, &money_types.read(), &cur),
+                        value: fmt_currency(total, &cur),
+                        color: currency_color(&cur),
+                    }
+                }
             }
             ConvertedTotal { vnd: total_vnd, usd: total_usd, gold: total_gold }
 
@@ -108,7 +116,7 @@ pub fn WalletList(view: Signal<WalletView>) -> Element {
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 #[component]
-fn TotalCard(label: &'static str, value: String, color: &'static str) -> Element {
+fn TotalCard(label: String, value: String, color: &'static str) -> Element {
     rsx! {
         div {
             style: "background:#fff; border-radius:10px; padding:10px; box-shadow:0 1px 3px rgba(0,0,0,.06); border-left:3px solid {color};",
@@ -131,7 +139,6 @@ fn WalletCard(
     on_tap:  EventHandler<MouseEvent>,
     on_edit: EventHandler<MouseEvent>,
 ) -> Element {
-    let t = use_i18n();
     let (type_icon, type_color) = match wallet.wallet_type {
         WalletType::Cash       => ("💵", "#10b981"),
         WalletType::Bank       => ("🏦", "#6366f1"),
@@ -139,7 +146,6 @@ fn WalletCard(
         WalletType::EWallet    => ("📱", "#f59e0b"),
         WalletType::Investment => ("📈", "#8b5cf6"),
     };
-    let balance_str = fmt_currency(wallet.balance, &wallet.currency);
     let icon = wallet.icon.as_deref().unwrap_or(type_icon);
 
     rsx! {
@@ -154,14 +160,25 @@ fn WalletCard(
 
             div { style: "flex:1; min-width:0;",
                 div { style: "font-size:15px; font-weight:600; color:#1f2937; overflow-wrap:anywhere;", "{wallet.name}" }
-                div { style: "font-size:11px; color:#9ca3af; margin-top:1px;",
-                    "{t.code(&wallet.wallet_type.to_string())} · {wallet.currency}"
-                    if let Some(ref broker) = wallet.broker {
-                        span { " · {broker}" }
-                    }
+                // The type is already the group header, so only the broker is shown here
+                if let Some(ref broker) = wallet.broker {
+                    div { style: "font-size:11px; color:#9ca3af; margin-top:1px;", "{broker}" }
                 }
                 // Balance gets its own line so long amounts never squeeze the name
-                div { style: "font-size:16px; font-weight:700; color:#1f2937; margin-top:4px; overflow-wrap:anywhere;", "{balance_str}" }
+                // Smaller lines when the wallet holds several money types, so the card stays compact
+                {
+                    let balances = wallet.display_balances();
+                    let style = if balances.len() > 1 {
+                        "font-size:13px; font-weight:600; color:#1f2937; margin-top:2px; overflow-wrap:anywhere;"
+                    } else {
+                        "font-size:16px; font-weight:700; color:#1f2937; margin-top:4px; overflow-wrap:anywhere;"
+                    };
+                    rsx! {
+                        for b in balances {
+                            div { style: "{style}", "{fmt_currency(b.balance, &b.currency)}" }
+                        }
+                    }
+                }
             }
 
             button {

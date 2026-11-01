@@ -11,10 +11,20 @@ static DB_PATH: OnceCell<String> = OnceCell::new();
 pub fn init(path: &str) -> Arc<Mutex<Connection>> {
     let conn = Connection::open(path).expect("Failed to open SQLite database");
     migrations::run(&conn).expect("Failed to run migrations");
+    let _ = crate::repository::CurrencyRepo::refresh_cache(&conn);
     let db = Arc::new(Mutex::new(conn));
     DB.set(db.clone()).ok();
     DB_PATH.set(path.to_string()).ok();
     db
+}
+
+/// Folder holding the database, also used for app JSON files (e.g. bank statements).
+pub fn data_dir() -> std::path::PathBuf {
+    let path = DB_PATH.get().map(String::as_str).unwrap_or("");
+    match std::path::Path::new(path).parent() {
+        Some(p) if !p.as_os_str().is_empty() => p.to_path_buf(),
+        _ => std::path::PathBuf::from("."),
+    }
 }
 
 pub fn get() -> Arc<Mutex<Connection>> {
@@ -42,8 +52,7 @@ fn seed_default_wallet(conn: &Connection) -> crate::error::Result<()> {
     let no_wallets: bool = conn.query_row("SELECT COUNT(*) = 0 FROM wallets", [], |r| r.get(0))?;
     if no_wallets {
         let wallet = WalletRepo::create(conn, &NewWallet {
-            name: "CASH".into(), wallet_type: WalletType::Cash, currency: Currency::VND,
-            balance: Decimal::ZERO, broker: None, icon: None, color: None, sort_order: 0,
+            name: "CASH".into(), wallet_type: WalletType::Cash, broker: None, icon: None, color: None, sort_order: 0,
         })?;
         // Same as the wallet form: every wallet starts with an (editable) opening balance record
         let mut opening = NewTransaction::opening_balance(&wallet.id, Decimal::ZERO, Currency::VND, crate::views::now_ts());
@@ -92,10 +101,10 @@ mod tests {
         let wallets = WalletRepo::list_active(&conn).unwrap();
         assert_eq!(wallets.len(), 1);
         assert_eq!(wallets[0].name, "CASH");
-        assert!(crate::services::TransactionService::find_opening_balance(&conn, &wallets[0].id).unwrap().is_some());
+        assert!(crate::services::TransactionService::find_opening_balance(&conn, &wallets[0].id, &crate::models::Currency::VND).unwrap().is_some());
 
         // Deleted by the user: the next launch doesn't bring it back
-        conn.execute_batch("DELETE FROM transactions; DELETE FROM wallets;").unwrap();
+        conn.execute_batch("DELETE FROM transactions; DELETE FROM wallet_balances; DELETE FROM wallets;").unwrap();
         super::seed(&conn).unwrap();
         assert!(WalletRepo::list_active(&conn).unwrap().is_empty());
     }

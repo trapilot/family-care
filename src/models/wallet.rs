@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
 
-use super::{decimal_to_f64, f64_to_decimal};
 use crate::error::{AppError, Result};
 
 // ─── Currency ────────────────────────────────────────────────────────────────
@@ -84,40 +83,57 @@ pub struct Wallet {
     pub id:          String,
     pub name:        String,
     pub wallet_type: WalletType,
-    pub currency:    Currency,
-    pub balance:     Decimal,
     pub broker:      Option<String>,
     pub icon:        Option<String>,
     pub color:       Option<String>,
     pub is_active:   bool,
     pub sort_order:  i32,
     pub created_at:  i64,
+    /// Balance per money type, in money-type sort order (filled by WalletRepo)
+    #[serde(default)]
+    pub balances:    Vec<WalletBalance>,
+}
+
+/// Balance of a wallet in one money type
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WalletBalance {
+    pub currency: Currency,
+    pub balance:  Decimal,
 }
 
 impl Wallet {
     pub fn from_row(row: &Row) -> rusqlite::Result<Self> {
-        let balance_f64: f64 = row.get("balance")?;
         let is_active_i: i32 = row.get("is_active")?;
         let wt: String = row.get("wallet_type")?;
-        let cur: String = row.get("currency")?;
 
         Ok(Wallet {
             id:          row.get("id")?,
             name:        row.get("name")?,
             wallet_type: WalletType::from_str(&wt).map_err(to_sqlite_err)?,
-            currency:    Currency::from_str(&cur).map_err(to_sqlite_err)?,
-            balance:     f64_to_decimal(balance_f64),
             broker:      row.get("broker")?,
             icon:        row.get("icon")?,
             color:       row.get("color")?,
             is_active:   is_active_i != 0,
             sort_order:  row.get("sort_order")?,
             created_at:  row.get("created_at")?,
+            balances:    vec![],
         })
     }
 
-    pub fn balance_f64(&self) -> f64 {
-        decimal_to_f64(self.balance)
+    /// Balance in one money type (0 if the wallet never held it)
+    pub fn balance(&self, currency: &Currency) -> Decimal {
+        self.balances.iter().find(|b| &b.currency == currency).map(|b| b.balance).unwrap_or(Decimal::ZERO)
+    }
+
+    /// The non-zero balances; if there are none, one zero entry in the wallet's first
+    /// money type (VND when it has no balance rows at all)
+    pub fn display_balances(&self) -> Vec<WalletBalance> {
+        let non_zero: Vec<WalletBalance> = self.balances.iter().filter(|b| !b.balance.is_zero()).cloned().collect();
+        if !non_zero.is_empty() {
+            return non_zero;
+        }
+        let currency = self.balances.first().map(|b| b.currency.clone()).unwrap_or(Currency::VND);
+        vec![WalletBalance { currency, balance: Decimal::ZERO }]
     }
 }
 
@@ -127,8 +143,6 @@ impl Wallet {
 pub struct NewWallet {
     pub name:        String,
     pub wallet_type: WalletType,
-    pub currency:    Currency,
-    pub balance:     Decimal,
     pub broker:      Option<String>,
     pub icon:        Option<String>,
     pub color:       Option<String>,

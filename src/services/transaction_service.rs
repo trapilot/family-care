@@ -3,7 +3,7 @@ use rust_decimal::Decimal;
 
 use crate::error::{AppError, Result};
 use crate::models::{
-    decimal_to_f64, f64_to_decimal, Currency,
+    decimal_to_f64, Currency,
     transaction::{NewTransaction, Transaction, TransactionType},
 };
 use crate::repository::{HoldingRepo, TransactionRepo, WalletRepo};
@@ -43,19 +43,38 @@ impl TransactionService {
         }
     }
 
-    /// The wallet's opening-balance record (the earliest one), if any
-    pub fn find_opening_balance(conn: &Connection, wallet_id: &str) -> Result<Option<Transaction>> {
+    /// The wallet's opening-balance records (earliest first), every money type
+    fn opening_balances_sorted(conn: &Connection, wallet_id: &str) -> Result<Vec<Transaction>> {
         let mut found = TransactionRepo::list(conn, &crate::repository::transaction_repo::TxnFilter {
             wallet_id: Some(wallet_id.to_string()),
             txn_type:  Some(TransactionType::OpeningBalance),
             ..Default::default()
         })?;
         found.sort_by_key(|t| (t.txn_date, t.created_at));
-        Ok(found.into_iter().next())
+        Ok(found)
     }
 
-    /// Set the wallet's opening balance (0 allowed): replaces the existing record, keeping its
-    /// date and note, so the wallet balance moves by the difference; creates one if missing.
+    /// The wallet's opening-balance record in one money type (the earliest one), if any
+    pub fn find_opening_balance(conn: &Connection, wallet_id: &str, currency: &Currency) -> Result<Option<Transaction>> {
+        Ok(Self::opening_balances_sorted(conn, wallet_id)?.into_iter().find(|t| &t.currency == currency))
+    }
+
+    /// The wallet's opening-balance records: the earliest one per money type
+    pub fn find_opening_balances(conn: &Connection, wallet_id: &str) -> Result<Vec<Transaction>> {
+        let mut seen: Vec<Currency> = vec![];
+        let mut result = vec![];
+        for t in Self::opening_balances_sorted(conn, wallet_id)? {
+            if !seen.contains(&t.currency) {
+                seen.push(t.currency.clone());
+                result.push(t);
+            }
+        }
+        Ok(result)
+    }
+
+    /// Set the wallet's opening balance in one money type (0 allowed): replaces the existing
+    /// record, keeping its date and note, so the wallet balance moves by the difference;
+    /// creates one if missing (but no empty record for a type the wallet never had).
     pub fn set_opening_balance(
         conn: &Connection,
         wallet_id: &str,
@@ -63,8 +82,11 @@ impl TransactionService {
         currency: Currency,
         default_note: &str,
     ) -> Result<()> {
-        let existing = Self::find_opening_balance(conn, wallet_id)?;
-        if existing.as_ref().is_some_and(|t| t.amount == amount && t.currency == currency) {
+        let existing = Self::find_opening_balance(conn, wallet_id, &currency)?;
+        if existing.is_none() && amount.is_zero() {
+            return Ok(());
+        }
+        if existing.as_ref().is_some_and(|t| t.amount == amount) {
             return Ok(());
         }
         let (date, note) = match &existing {
@@ -84,15 +106,15 @@ impl TransactionService {
     // ─── Income ───────────────────────────────────────────────────────────────
 
     fn process_income(conn: &Connection, input: &NewTransaction) -> Result<Transaction> {
-        WalletRepo::add_balance(conn, &input.wallet_id, decimal_to_f64(input.amount))?;
+        WalletRepo::add_balance(conn, &input.wallet_id, &input.currency, decimal_to_f64(input.amount))?;
         TransactionRepo::insert(conn, input)
     }
 
     // ─── Expense ─────────────────────────────────────────────────────────────
 
     fn process_expense(conn: &Connection, input: &NewTransaction) -> Result<Transaction> {
-        Self::check_balance(conn, &input.wallet_id, input.amount)?;
-        WalletRepo::add_balance(conn, &input.wallet_id, -decimal_to_f64(input.amount))?;
+        Self::check_balance(conn, &input.wallet_id, &input.currency, input.amount)?;
+        WalletRepo::add_balance(conn, &input.wallet_id, &input.currency, -decimal_to_f64(input.amount))?;
         TransactionRepo::insert(conn, input)
     }
 
@@ -104,9 +126,12 @@ impl TransactionService {
         let to_amount = input.to_amount
             .ok_or_else(|| AppError::Validation("Transfer requires to_amount".into()))?;
 
-        Self::check_balance(conn, &input.wallet_id, input.amount)?;
-        WalletRepo::add_balance(conn, &input.wallet_id, -decimal_to_f64(input.amount))?;
-        WalletRepo::add_balance(conn, to_wallet_id, decimal_to_f64(to_amount))?;
+        let to_currency = input.to_currency.as_ref()
+            .ok_or_else(|| AppError::Validation("Transfer requires to_currency".into()))?;
+
+        Self::check_balance(conn, &input.wallet_id, &input.currency, input.amount)?;
+        WalletRepo::add_balance(conn, &input.wallet_id, &input.currency, -decimal_to_f64(input.amount))?;
+        WalletRepo::add_balance(conn, to_wallet_id, to_currency, decimal_to_f64(to_amount))?;
         TransactionRepo::insert(conn, input)
     }
 
@@ -122,8 +147,8 @@ impl TransactionService {
 
         // Deduct cost from wallet
         let total_cost = qty * price;
-        Self::check_balance(conn, &input.wallet_id, total_cost)?;
-        WalletRepo::add_balance(conn, &input.wallet_id, -decimal_to_f64(total_cost))?;
+        Self::check_balance(conn, &input.wallet_id, &input.currency, total_cost)?;
+        WalletRepo::add_balance(conn, &input.wallet_id, &input.currency, -decimal_to_f64(total_cost))?;
 
         // Update holding: quantity += qty, recalculate avg price
         HoldingService::apply_buy(conn, holding_id, qty, price)?;
@@ -152,7 +177,7 @@ impl TransactionService {
 
         // Add proceeds to wallet
         let total_proceeds = qty * price;
-        WalletRepo::add_balance(conn, &input.wallet_id, decimal_to_f64(total_proceeds))?;
+        WalletRepo::add_balance(conn, &input.wallet_id, &input.currency, decimal_to_f64(total_proceeds))?;
 
         TransactionRepo::insert(conn, input)
     }
@@ -182,18 +207,20 @@ impl TransactionService {
     fn reverse_inner(conn: &Connection, txn: &Transaction) -> Result<()> {
         match txn.txn_type {
             TransactionType::Income | TransactionType::OpeningBalance => {
-                WalletRepo::add_balance(conn, &txn.wallet_id, -txn.amount_f64())?;
+                WalletRepo::add_balance(conn, &txn.wallet_id, &txn.currency, -txn.amount_f64())?;
             }
             TransactionType::Expense => {
-                WalletRepo::add_balance(conn, &txn.wallet_id, txn.amount_f64())?;
+                WalletRepo::add_balance(conn, &txn.wallet_id, &txn.currency, txn.amount_f64())?;
             }
             TransactionType::Transfer => {
                 let to_id = txn.to_wallet_id.as_ref()
                     .ok_or_else(|| AppError::Validation("Corrupt transfer: missing to_wallet_id".into()))?;
                 let to_amount = txn.to_amount
                     .ok_or_else(|| AppError::Validation("Corrupt transfer: missing to_amount".into()))?;
-                WalletRepo::add_balance(conn, &txn.wallet_id, txn.amount_f64())?;
-                WalletRepo::add_balance(conn, to_id, -decimal_to_f64(to_amount))?;
+                // Old rows may lack to_currency: they were same-currency transfers
+                let to_currency = txn.to_currency.clone().unwrap_or(txn.currency.clone());
+                WalletRepo::add_balance(conn, &txn.wallet_id, &txn.currency, txn.amount_f64())?;
+                WalletRepo::add_balance(conn, to_id, &to_currency, -decimal_to_f64(to_amount))?;
             }
             TransactionType::InvestBuy => {
                 let holding_id = txn.holding_id.as_ref()
@@ -201,7 +228,7 @@ impl TransactionService {
                 let qty = txn.asset_quantity
                     .ok_or_else(|| AppError::Validation("Corrupt invest_buy: missing asset_quantity".into()))?;
                 let total = txn.amount;
-                WalletRepo::add_balance(conn, &txn.wallet_id, decimal_to_f64(total))?;
+                WalletRepo::add_balance(conn, &txn.wallet_id, &txn.currency, decimal_to_f64(total))?;
                 // Reduce holding quantity; avg price recalculation is approximate on reversal
                 let current_qty = HoldingRepo::get_quantity(conn, holding_id)?;
                 let new_qty = (current_qty - qty).max(Decimal::ZERO);
@@ -216,7 +243,7 @@ impl TransactionService {
                 let price = txn.asset_price
                     .ok_or_else(|| AppError::Validation("Corrupt invest_sell: missing asset_price".into()))?;
                 let total = txn.amount;
-                WalletRepo::add_balance(conn, &txn.wallet_id, -decimal_to_f64(total))?;
+                WalletRepo::add_balance(conn, &txn.wallet_id, &txn.currency, -decimal_to_f64(total))?;
                 // Restore holding quantity (avg price unchanged — best approximation)
                 let current_qty = HoldingRepo::get_quantity(conn, holding_id)?;
                 let avg = HoldingRepo::get_avg_price(conn, holding_id)?;
@@ -244,15 +271,9 @@ impl TransactionService {
             return Err(AppError::Validation("Amount must be greater than zero".into()));
         }
 
-        // Wallet must exist, and the amount must be in its currency: a wallet balance is
-        // one number, so 17 GOLD added to a VND wallet would silently become 17 ₫
-        let wallet = WalletRepo::find_by_id(conn, &input.wallet_id)?
+        // Wallet must exist; it can hold any money type
+        WalletRepo::find_by_id(conn, &input.wallet_id)?
             .ok_or_else(|| AppError::NotFound(format!("wallet '{}'", input.wallet_id)))?;
-        if input.currency != wallet.currency {
-            return Err(AppError::Validation(format!(
-                "Wallet {} holds {}, not {}", wallet.name, wallet.currency, input.currency
-            )));
-        }
 
         match input.txn_type {
             TransactionType::Income => {
@@ -268,20 +289,17 @@ impl TransactionService {
             TransactionType::Transfer => {
                 let to_id = input.to_wallet_id.as_ref()
                     .ok_or_else(|| AppError::Validation("transfer requires to_wallet_id".into()))?;
-                if to_id == &input.wallet_id {
+                let to_currency = input.to_currency.as_ref()
+                    .ok_or_else(|| AppError::Validation("transfer requires to_currency".into()))?;
+                // Inside one wallet only a currency exchange makes sense
+                if to_id == &input.wallet_id && *to_currency == input.currency {
                     return Err(AppError::Validation("Cannot transfer to the same wallet".into()));
                 }
                 if input.to_amount.is_none() {
                     return Err(AppError::Validation("transfer requires to_amount".into()));
                 }
-                let to_wallet = WalletRepo::find_by_id(conn, to_id)?
+                WalletRepo::find_by_id(conn, to_id)?
                     .ok_or_else(|| AppError::NotFound(format!("wallet '{to_id}'")))?;
-                if input.to_currency.as_ref().is_some_and(|c| *c != to_wallet.currency) {
-                    return Err(AppError::Validation(format!(
-                        "Wallet {} holds {}, not {}",
-                        to_wallet.name, to_wallet.currency, input.to_currency.as_ref().unwrap()
-                    )));
-                }
             }
             TransactionType::OpeningBalance => {}
             TransactionType::InvestBuy | TransactionType::InvestSell => {
@@ -302,15 +320,8 @@ impl TransactionService {
 
     // ─── Balance check ────────────────────────────────────────────────────────
 
-    fn check_balance(conn: &Connection, wallet_id: &str, amount: Decimal) -> Result<()> {
-        let balance_f64: f64 = conn.query_row(
-            "SELECT balance FROM wallets WHERE id = ?1",
-            [wallet_id],
-            |row| row.get(0),
-        ).map_err(|_| AppError::NotFound(format!("wallet '{wallet_id}'")))?;
-
-        let balance = f64_to_decimal(balance_f64);
-        if amount > balance {
+    fn check_balance(conn: &Connection, wallet_id: &str, currency: &Currency, amount: Decimal) -> Result<()> {
+        if amount > WalletRepo::get_balance(conn, wallet_id, currency)? {
             return Err(AppError::InsufficientBalance(wallet_id.to_string()));
         }
         Ok(())
@@ -329,16 +340,15 @@ mod tests {
         crate::db::migrations::run(&conn).unwrap();
         CategoryRepo::seed_defaults(&conn).unwrap();
         let wallet = WalletRepo::create(&conn, &NewWallet {
-            name: "Cash".into(), wallet_type: WalletType::Cash, currency: Currency::VND,
-            balance: Decimal::ZERO, broker: None, icon: None, color: None, sort_order: 0,
+            name: "Cash".into(), wallet_type: WalletType::Cash, broker: None, icon: None, color: None, sort_order: 0,
         }).unwrap();
-        let balance = || WalletRepo::find_by_id(&conn, &wallet.id).unwrap().unwrap().balance;
+        let balance = || WalletRepo::find_by_id(&conn, &wallet.id).unwrap().unwrap().balance(&Currency::VND);
 
         // Created with 0: the record still exists
         let mut opening = NewTransaction::opening_balance(&wallet.id, Decimal::ZERO, Currency::VND, 1_000);
         opening.note = Some("Opening Balance".into());
         TransactionService::execute(&conn, &opening).unwrap();
-        let first = TransactionService::find_opening_balance(&conn, &wallet.id).unwrap().unwrap();
+        let first = TransactionService::find_opening_balance(&conn, &wallet.id, &Currency::VND).unwrap().unwrap();
         assert_eq!((first.amount, balance()), (Decimal::ZERO, Decimal::ZERO));
 
         // Raised later; date and note kept, still one record
@@ -359,17 +369,34 @@ mod tests {
 
         // Same value again: nothing changes
         TransactionService::set_opening_balance(&conn, &wallet.id, Decimal::from(3_000_000), Currency::VND, "x").unwrap();
-        assert_eq!(TransactionService::find_opening_balance(&conn, &wallet.id).unwrap().unwrap().id, all[0].id);
+        assert_eq!(TransactionService::find_opening_balance(&conn, &wallet.id, &Currency::VND).unwrap().unwrap().id, all[0].id);
 
         // Other types still need more than 0
         let zero_expense = NewTransaction::expense(&wallet.id, Decimal::ZERO, Currency::VND, &category, 3_000);
         assert!(TransactionService::execute(&conn, &zero_expense).is_err());
 
-        // 17 GOLD into a VND wallet is refused instead of becoming 17 ₫
+        // A wallet holds any money type: GOLD lands in its own balance, VND is untouched
         let before = balance();
         let gold = NewTransaction::income(&wallet.id, Decimal::from(17), Currency::GOLD, crate::models::IncomeType::Other, 4_000);
-        let err = TransactionService::execute(&conn, &gold).unwrap_err().to_string();
-        assert!(err.contains("holds VND, not GOLD"), "{err}");
-        assert_eq!(balance(), before);
+        TransactionService::execute(&conn, &gold).unwrap();
+        let w = WalletRepo::find_by_id(&conn, &wallet.id).unwrap().unwrap();
+        assert_eq!((w.balance(&Currency::VND), w.balance(&Currency::GOLD)), (before, Decimal::from(17)));
+
+        // Spending more GOLD than held is refused
+        let too_much = NewTransaction::expense(&wallet.id, Decimal::from(20), Currency::GOLD, &category, 5_000);
+        let err = TransactionService::execute(&conn, &too_much).unwrap_err().to_string();
+        assert!(err.contains("Insufficient balance"), "{err}");
+
+        // No empty opening record for a type the wallet never had
+        TransactionService::set_opening_balance(&conn, &wallet.id, Decimal::ZERO, Currency::USD, "x").unwrap();
+        assert!(TransactionService::find_opening_balance(&conn, &wallet.id, &Currency::USD).unwrap().is_none());
+
+        // Same-wallet exchange VND -> GOLD works, VND -> VND is refused
+        let exchange = NewTransaction::transfer(&wallet.id, Decimal::from(1_000), Currency::VND, &wallet.id, Decimal::from(1), Currency::GOLD, 6_000);
+        TransactionService::execute(&conn, &exchange).unwrap();
+        let w = WalletRepo::find_by_id(&conn, &wallet.id).unwrap().unwrap();
+        assert_eq!((w.balance(&Currency::VND), w.balance(&Currency::GOLD)), (before - Decimal::from(1_000), Decimal::from(18)));
+        let same = NewTransaction::transfer(&wallet.id, Decimal::from(1_000), Currency::VND, &wallet.id, Decimal::from(1_000), Currency::VND, 7_000);
+        assert!(TransactionService::execute(&conn, &same).is_err());
     }
 }

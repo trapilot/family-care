@@ -4,6 +4,7 @@ pub mod member_service;
 pub mod rate_service;
 pub mod reminder_service;
 pub mod report_service;
+pub mod statement;
 pub mod transaction_service;
 
 pub use holding_service::HoldingService;
@@ -13,4 +14,5 @@ pub use reminder_service::ReminderService;
 pub use report_service::{
     ExpenseByCategoryItem, InvestmentPnlItem, MonthlySummary, ReportService,
 };
+pub use statement::StatementService;
 pub use transaction_service::TransactionService;

@@ -195,8 +195,7 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         crate::db::migrations::run(&conn).unwrap();
         let wallet = WalletRepo::create(&conn, &NewWallet {
-            name: "Vietcombank".into(), wallet_type: WalletType::Bank, currency: Currency::VND,
-            balance: Decimal::ZERO, broker: None, icon: None, color: None, sort_order: 0,
+            name: "Vietcombank".into(), wallet_type: WalletType::Bank, broker: None, icon: None, color: None, sort_order: 0,
         }).unwrap();
         SettingsRepo::set_reminder_interval_hours(&conn, interval).unwrap();
         (conn, wallet.id)

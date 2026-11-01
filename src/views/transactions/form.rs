@@ -5,11 +5,11 @@ use std::str::FromStr;
 
 use crate::app::AppState;
 use crate::models::{
-    Currency, IncomeType, NewReminder, NewTransaction, RepeatUnit, Transaction, TransactionType,
+    Currency, CurrencyInfo, IncomeType, NewReminder, NewTransaction, RepeatUnit, Transaction, TransactionType,
 };
-use crate::repository::{CategoryRepo, HoldingRepo, ReminderRepo, TxnImageRepo, WalletRepo};
+use crate::repository::{CategoryRepo, CurrencyRepo, HoldingRepo, ReminderRepo, TxnImageRepo, WalletRepo};
 use crate::services::{ReminderService, TransactionService};
-use crate::views::{date_str_add, date_str_to_ts, now_ts, repeat_unit_label, AmountInput};
+use crate::views::{currency_name, date_str_add, date_str_to_ts, fmt_currency, now_ts, repeat_unit_label, AmountInput};
 use crate::models::id_card::jpeg_data_url;
 use crate::views::photo_picker::{use_photo_picker, PhotoInput};
 use super::TxnView;
@@ -23,6 +23,8 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
     let wallets    = use_signal(|| vec![]);
     let categories = use_signal(|| vec![]);
     let holdings   = use_signal(|| vec![]);
+    // Every money type (active ones fill the pickers; names also label a hidden type being edited)
+    let money_types = use_signal(Vec::<CurrencyInfo>::new);
 
     // ── Form fields ──
     let mut txn_type    = use_signal(|| editing.as_ref().map(|t| t.txn_type.clone()).unwrap_or(TransactionType::Expense));
@@ -91,8 +93,10 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
         let mut wallets    = wallets.clone();
         let mut categories = categories.clone();
         let mut holdings   = holdings.clone();
+        let mut money_types = money_types;
         move || {
             state.with_conn(|conn| {
+                if let Ok(list) = CurrencyRepo::list(conn)        { money_types.set(list); }
                 if let Ok(ws) = WalletRepo::list_active(conn)    { wallets.set(ws); }
                 if let Ok(cs) = CategoryRepo::list(conn)          { categories.set(cs); }
                 if let Ok(hs) = HoldingRepo::list_all_active(conn) { holdings.set(hs); }
@@ -285,13 +289,9 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
             FieldLabel { label: t.t("From Wallet") }
             SelectField {
                 value: wallet_id.read().clone(),
-                // The amount is always in the wallet's currency
-                onchange: move |v: String| {
-                    if let Some(w) = wallets.read().iter().find(|w| w.id == v) { currency.set(w.currency.clone()); }
-                    wallet_id.set(v);
-                },
+                onchange: move |v: String| { wallet_id.set(v); },
                 placeholder: t.t("Select wallet"),
-                options: wallets.read().iter().map(|w| (w.id.clone(), format!("{} ({})", w.name, w.currency))).collect()
+                options: wallets.read().iter().map(|w| (w.id.clone(), w.name.clone())).collect()
             }
 
             // ── Category (expense) — above the amount ──
@@ -335,12 +335,9 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
                     FieldLabel { label: t.t("To Wallet") }
                     SelectField {
                         value: to_wallet_id.read().clone(),
-                        onchange: move |v: String| {
-                            if let Some(w) = wallets.read().iter().find(|w| w.id == v) { to_currency.set(w.currency.clone()); }
-                            to_wallet_id.set(v);
-                        },
+                        onchange: move |v: String| { to_wallet_id.set(v); },
                         placeholder: t.t("Select destination wallet"),
-                        options: wallets.read().iter().map(|w| (w.id.clone(), format!("{} ({})", w.name, w.currency))).collect()
+                        options: wallets.read().iter().map(|w| (w.id.clone(), w.name.clone())).collect()
                     }
                     FieldLabel { label: t.t("To Amount (leave same for same-currency)") }
                     div {
@@ -351,7 +348,7 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
                             oninput: move |v| to_amount_str.set(v),
                             style: AMOUNT_WITH_CURRENCY_STYLE.to_string(),
                         }
-                        CurrencySelect { value: to_currency(), onchange: move |c| to_currency.set(c) }
+                        CurrencySelect { value: to_currency(), options: currency_options(&t, &money_types.read(), &to_currency()), onchange: move |c| to_currency.set(c) }
                     }
                 },
 
@@ -396,7 +393,21 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
                     oninput: move |v| amount_str.set(v),
                     style: AMOUNT_WITH_CURRENCY_STYLE.to_string(),
                 }
-                CurrencySelect { value: currency(), onchange: move |c| currency.set(c) }
+                CurrencySelect {
+                    value: currency(),
+                    options: currency_options(&t, &money_types.read(), &currency()),
+                    // The received money type follows by default; it can still be changed
+                    onchange: move |c: Currency| { to_currency.set(c.clone()); currency.set(c); },
+                }
+            }
+            // Available balance of the chosen wallet in the chosen money type
+            if matches!(*txn_type.read(), TransactionType::Expense | TransactionType::Transfer | TransactionType::InvestBuy) {
+                if let Some(w) = wallets.read().iter().find(|w| w.id == *wallet_id.read()) {
+                    div {
+                        style: "font-size:12px; color:#6b7280;",
+                        "{t.t(\"Available\")}: {fmt_currency(w.balance(&currency()), &currency())}"
+                    }
+                }
             }
 
             // ── Note ──
@@ -541,17 +552,30 @@ fn FieldLabel(label: &'static str) -> Element {
 /// Amount input sharing its row with a `CurrencySelect`
 const AMOUNT_WITH_CURRENCY_STYLE: &str = "flex:1; min-width:0; border:1px solid #e5e7eb; border-radius:8px; padding:10px 12px; font-size:16px; outline:none; background:#fff;";
 
-/// Compact VND / USD / GOLD dropdown shown right of an amount
+/// Active money types with their display names; `selected` is appended when it is hidden,
+/// so an old transaction in a hidden type still shows its type
+fn currency_options(t: &crate::i18n::I18n, list: &[CurrencyInfo], selected: &Currency) -> Vec<(Currency, String)> {
+    let mut options: Vec<(Currency, String)> = list.iter()
+        .filter(|i| i.is_active)
+        .map(|i| (i.code.clone(), currency_name(t, list, &i.code)))
+        .collect();
+    if !options.iter().any(|(c, _)| c == selected) {
+        options.push((selected.clone(), currency_name(t, list, selected)));
+    }
+    options
+}
+
+/// Compact money-type dropdown shown right of an amount
 #[component]
-fn CurrencySelect(value: Currency, onchange: EventHandler<Currency>) -> Element {
+fn CurrencySelect(value: Currency, options: Vec<(Currency, String)>, onchange: EventHandler<Currency>) -> Element {
     rsx! {
         select {
-            style: "flex-shrink:0; width:96px; border:1px solid #e5e7eb; border-radius:8px; padding:10px 8px; font-size:16px; font-weight:600; outline:none; background:#fff; color:#374151;",
+            style: "flex-shrink:0; width:120px; border:1px solid #e5e7eb; border-radius:8px; padding:10px 8px; font-size:14px; font-weight:600; outline:none; background:#fff; color:#374151;",
             onchange: move |e| {
                 if let Ok(c) = e.value().parse::<Currency>() { onchange.call(c); }
             },
-            for cur in [Currency::VND, Currency::USD, Currency::GOLD] {
-                option { value: "{cur}", selected: cur == value, "{cur}" }
+            for (cur, label) in options.iter() {
+                option { value: "{cur}", selected: *cur == value, "{label}" }
             }
         }
     }

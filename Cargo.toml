@@ -22,7 +22,10 @@ time          = "=0.3.36"
 bcrypt        = "0.15"
 # Exchange-rate fetching: rustls (no OpenSSL) so it cross-compiles for iOS/Android
 reqwest       = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
-tokio         = { version = "1", features = ["time"] }
+tokio         = { version = "1", features = ["time", "sync"] }
+# Bank statement parsing
+futures-util  = { version = "0.3", default-features = false }
+regex         = "1"
 # ID card photos: base64 to/from the WebView and inside backup JSON
 base64        = "0.22"
  
@@ -32,6 +35,13 @@ objc2                    = "0.6"
 block2                   = "0.6"
 objc2-foundation         = { version = "0.3", features = ["NSString", "NSError", "NSArray", "NSSet"] }
 objc2-user-notifications = { version = "0.3", features = ["UNUserNotificationCenter", "UNNotificationContent", "UNNotificationRequest", "UNNotificationTrigger", "UNNotificationSound", "UNNotification", "UNNotificationResponse", "UNNotificationAction", "UNNotificationCategory", "block2"] }
+
+# On-device text recognition (bank statement photos)
+[target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
+objc2                 = "0.6"
+objc2-foundation      = { version = "0.3", features = ["NSString", "NSError", "NSArray", "NSData", "NSDictionary", "NSAutoreleasePool"] }
+objc2-core-foundation = { version = "0.3", features = ["CFCGTypes"] }
+objc2-vision          = { version = "0.3", default-features = false, features = ["std", "VNRequest", "VNRecognizeTextRequest", "VNRequestHandler", "VNObservation", "VNTypes", "VNDefines", "objc2-core-foundation"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt"] }

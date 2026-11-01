@@ -1,6 +1,7 @@
 pub mod dashboard;
 pub mod reports;
 pub mod settings;
+pub mod statements;
 pub mod transactions;
 pub mod wallets;
 pub mod members;
@@ -17,19 +18,35 @@ pub fn fmt_vnd(amount: rust_decimal::Decimal) -> String {
     use rust_decimal::prelude::ToPrimitive;
     let n = amount.to_f64().unwrap_or(0.0) as i64;
     let s = format_thousands(n);
-    format!("{s} ₫")
+    let unit = crate::models::currency::cached_unit(&crate::models::Currency::VND);
+    format!("{s} {unit}")
 }
 
 /// Format USD
 pub fn fmt_usd(amount: rust_decimal::Decimal) -> String {
     use rust_decimal::prelude::ToPrimitive;
     let n = amount.to_f64().unwrap_or(0.0);
-    format!("${n:.2}")
+    let unit = crate::models::currency::cached_unit(&crate::models::Currency::USD);
+    format!("{unit}{n:.2}")
 }
 
 /// Format GOLD with only the decimals it has (max 3) — e.g. 17 chỉ, 2.5 chỉ
 pub fn fmt_gold(amount: rust_decimal::Decimal) -> String {
-    format!("{} chỉ", amount.round_dp(3).normalize())
+    format!("{} {}", amount.round_dp(3).normalize(), gold_unit())
+}
+
+/// Gold icon shown instead of the Vietnamese unit "chỉ" in English
+pub const GOLD_ICON: &str = "🪙";
+
+/// GOLD unit as displayed in the current language
+pub fn gold_unit() -> String {
+    gold_unit_for(crate::models::currency::cached_unit(&crate::models::Currency::GOLD), crate::i18n::current_lang())
+}
+
+/// The default unit "chỉ" means nothing in English, so it becomes the gold icon there;
+/// a unit the user typed in Settings → Money types is kept as is.
+fn gold_unit_for(unit: String, lang: crate::i18n::Lang) -> String {
+    if lang == crate::i18n::Lang::En && unit == "chỉ" { GOLD_ICON.to_string() } else { unit }
 }
 
 pub fn fmt_currency(amount: rust_decimal::Decimal, currency: &crate::models::Currency) -> String {
@@ -38,6 +55,42 @@ pub fn fmt_currency(amount: rust_decimal::Decimal, currency: &crate::models::Cur
         crate::models::Currency::USD  => fmt_usd(amount),
         crate::models::Currency::GOLD => fmt_gold(amount),
     }
+}
+
+/// Display name of a money type (translated), or its code when it isn't in `list`
+pub fn currency_name(t: &crate::i18n::I18n, list: &[crate::models::CurrencyInfo], c: &crate::models::Currency) -> String {
+    match list.iter().find(|i| &i.code == c) {
+        Some(info) => t.tr(&info.name),
+        None       => c.to_string(),
+    }
+}
+
+/// Card color of a money type
+pub fn currency_color(c: &crate::models::Currency) -> &'static str {
+    match c {
+        crate::models::Currency::VND  => "#6366f1",
+        crate::models::Currency::USD  => "#10b981",
+        crate::models::Currency::GOLD => "#f59e0b",
+    }
+}
+
+/// Totals to show as cards, in money-type sort order: every active type, plus a hidden
+/// type only while its total isn't zero (so no money is ever invisible)
+pub fn shown_totals(
+    list: &[crate::models::CurrencyInfo],
+    vnd: rust_decimal::Decimal,
+    usd: rust_decimal::Decimal,
+    gold: rust_decimal::Decimal,
+) -> Vec<(crate::models::Currency, rust_decimal::Decimal)> {
+    use crate::models::Currency;
+    list.iter()
+        .map(|i| {
+            let total = match i.code { Currency::VND => vnd, Currency::USD => usd, Currency::GOLD => gold };
+            (i, total)
+        })
+        .filter(|(i, total)| i.is_active || !total.is_zero())
+        .map(|(i, total)| (i.code.clone(), total))
+        .collect()
 }
 
 fn format_thousands(n: i64) -> String {
@@ -186,11 +239,20 @@ mod tests {
     fn gold_shows_only_needed_decimals() {
         use rust_decimal::Decimal;
         use std::str::FromStr;
-        assert_eq!(super::fmt_gold(Decimal::from(17)), "17 chỉ");
-        assert_eq!(super::fmt_gold(Decimal::from_str("17.000").unwrap()), "17 chỉ");
-        assert_eq!(super::fmt_gold(Decimal::from_str("2.50").unwrap()), "2.5 chỉ");
-        assert_eq!(super::fmt_gold(Decimal::from_str("0.1234").unwrap()), "0.123 chỉ");
-        assert_eq!(super::fmt_gold(Decimal::ZERO), "0 chỉ");
+        // Tests run in English (the default), so the unit is the gold icon
+        assert_eq!(super::fmt_gold(Decimal::from(17)), "17 🪙");
+        assert_eq!(super::fmt_gold(Decimal::from_str("17.000").unwrap()), "17 🪙");
+        assert_eq!(super::fmt_gold(Decimal::from_str("2.50").unwrap()), "2.5 🪙");
+        assert_eq!(super::fmt_gold(Decimal::from_str("0.1234").unwrap()), "0.123 🪙");
+        assert_eq!(super::fmt_gold(Decimal::ZERO), "0 🪙");
+    }
+
+    #[test]
+    fn gold_unit_is_an_icon_only_in_english() {
+        use crate::i18n::Lang;
+        assert_eq!(super::gold_unit_for("chỉ".into(), Lang::En), super::GOLD_ICON);
+        assert_eq!(super::gold_unit_for("chỉ".into(), Lang::Vi), "chỉ");
+        assert_eq!(super::gold_unit_for("lượng".into(), Lang::En), "lượng", "a custom unit is kept");
     }
 
     #[test]

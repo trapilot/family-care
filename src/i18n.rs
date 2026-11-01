@@ -45,8 +45,25 @@ pub struct I18n {
     lang: Signal<Lang>,
 }
 
+/// Language mirrored outside the signal, for plain formatting functions (e.g. `fmt_gold`)
+static CURRENT_LANG: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+/// The UI language, readable outside components
+pub fn current_lang() -> Lang {
+    match CURRENT_LANG.load(std::sync::atomic::Ordering::Relaxed) {
+        1 => Lang::Vi,
+        _ => Lang::En,
+    }
+}
+
+fn store_current_lang(lang: Lang) {
+    let v = match lang { Lang::En => 0, Lang::Vi => 1 };
+    CURRENT_LANG.store(v, std::sync::atomic::Ordering::Relaxed);
+}
+
 impl I18n {
     pub fn new(lang: Signal<Lang>) -> Self {
+        store_current_lang(lang());
         Self { lang }
     }
 
@@ -55,6 +72,7 @@ impl I18n {
     }
 
     pub fn set_lang(&mut self, lang: Lang) {
+        store_current_lang(lang);
         self.lang.set(lang);
     }
 
@@ -369,6 +387,17 @@ fn vi(en: &str) -> Option<&'static str> {
         "Total (converted)"                    => "Tổng (quy đổi)",
         "chỉ"                                  => "chỉ",
         "Gold"                                 => "Vàng",
+        "Money types"                          => "Loại tiền",
+        "Vietnamese Dong"                      => "Việt Nam Đồng",
+        "US Dollar"                            => "Đô la Mỹ",
+        "Available"                            => "Khả dụng",
+        "Unit"                                 => "Đơn vị",
+        "Shown"                                => "Hiển thị",
+        "Hidden"                               => "Đã ẩn",
+        "Money types every wallet can hold. Hidden types are left out of pickers." => "Các loại tiền mà mỗi ví có thể giữ. Loại bị ẩn sẽ không hiện trong danh sách chọn.",
+        "This money type still has a balance in a wallet" => "Loại tiền này vẫn còn số dư trong một ví",
+        "At least one money type must stay shown" => "Phải giữ hiển thị ít nhất một loại tiền",
+        "Name and unit are required"           => "Vui lòng nhập tên và đơn vị",
         "Updating…"                            => "Đang cập nhật…",
         "↻ Update rates"                       => "↻ Cập nhật tỷ giá",
         "Rates updated"                        => "Đã cập nhật tỷ giá",
@@ -458,6 +487,47 @@ fn vi(en: &str) -> Option<&'static str> {
         "Household Goods"                      => "Đồ gia dụng",
         "Family Support"                       => "Chu cấp",
         "Travel"                               => "Du lịch",
+        // ── Statements ──
+        "Statements"                           => "Sao kê",
+        "📷 Add photos"                        => "📷 Thêm ảnh",
+        "Accounts"                             => "Tài khoản",
+        "Transactions ({n} selected)"          => "Giao dịch ({n} đã chọn)",
+        "Photos ({n})"                         => "Ảnh ({n})",
+        "Sent"                                 => "Đã chuyển",
+        "Received"                             => "Đã nhận",
+        "Net"                                  => "Chênh lệch",
+        "Reading photo {done}/{total}…"        => "Đang đọc ảnh {done}/{total}…",
+        "Check"                                => "Kiểm tra",
+        "Photo {n}: {error}"                   => "Ảnh {n}: {error}",
+        "Dismiss"                              => "Đóng",
+        "Could not read the photo"             => "Không đọc được ảnh",
+        "Statement table not found"            => "Không tìm thấy bảng sao kê",
+        "Unreadable image"                     => "Không đọc được ảnh",
+        "This statement page was already imported" => "Trang sao kê này đã được nhập",
+        "Text recognition is not supported on this device" => "Thiết bị không hỗ trợ đọc chữ từ ảnh",
+        "Text recognition was interrupted"     => "Việc đọc chữ bị gián đoạn",
+        "Row counts differ — check the results" => "Số dòng không khớp — hãy kiểm tra lại",
+        "Add statement photos to see accounts" => "Thêm ảnh sao kê để xem các tài khoản",
+        "Search name, account or bank…"        => "Tìm tên, tài khoản hoặc ngân hàng…",
+        "Select all shown"                     => "Chọn tất cả đang hiện",
+        "Clear selection"                      => "Bỏ chọn",
+        "Unknown name"                         => "Không rõ tên",
+        "No account number"                    => "Không có số tài khoản",
+        "{n} txns"                             => "{n} giao dịch",
+        "Select accounts in the Accounts tab"  => "Chọn tài khoản ở tab Tài khoản hoặc tìm theo nội dung",
+        "Search transfer content…"  => "Tìm theo nội dung chuyển khoản…",
+        "No matching transactions"  => "Không có giao dịch phù hợp",
+        "Delete this statement photo?"         => "Xoá ảnh sao kê này?",
+        "Its transactions will be removed from the lists." => "Các giao dịch của ảnh sẽ bị xoá khỏi danh sách.",
+        "🗑 Clear all statement data"          => "🗑 Xoá toàn bộ dữ liệu sao kê",
+        "Clear all statement data?"            => "Xoá toàn bộ dữ liệu sao kê?",
+        "All imported statements and their transactions will be deleted. This cannot be undone." => "Tất cả sao kê đã nhập và giao dịch sẽ bị xoá. Không thể hoàn tác.",
+        "Clear all"                            => "Xoá hết",
+        "Page {p}"                             => "Trang {p}",
+        "⚠️ {n} rows need checking"            => "⚠️ {n} dòng cần kiểm tra",
+        "Imported {date}"                      => "Nhập ngày {date}",
+        "Opening balance {amount}"             => "Số dư đầu kỳ {amount}",
+        "Some rows could not be verified — check them" => "Một số dòng chưa được kiểm chứng — hãy kiểm tra",
         _ => return None,
     })
 }

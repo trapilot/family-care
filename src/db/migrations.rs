@@ -29,18 +29,33 @@ fn migrate_v1(conn: &Connection) -> Result<()> {
 
     conn.execute_batch("
         -- ── Money ──
+        -- Money types: the fixed VND / USD / GOLD with user-editable display details
+        CREATE TABLE IF NOT EXISTS currencies (
+            code       TEXT PRIMARY KEY,           -- 'VND' / 'USD' / 'GOLD' (models::Currency)
+            name       TEXT NOT NULL,              -- display name, translated via t.tr()
+            unit       TEXT NOT NULL,              -- symbol used when formatting amounts
+            is_active  INTEGER NOT NULL DEFAULT 1, -- hidden types are left out of pickers
+            sort_order INTEGER NOT NULL DEFAULT 0
+        );
+
         CREATE TABLE IF NOT EXISTS wallets (
             id          TEXT PRIMARY KEY,
             name        TEXT NOT NULL,
             wallet_type TEXT NOT NULL,
-            currency    TEXT NOT NULL,
-            balance     REAL NOT NULL DEFAULT 0,
             broker      TEXT,
             icon        TEXT,
             color       TEXT,
             is_active   INTEGER NOT NULL DEFAULT 1,
             sort_order  INTEGER NOT NULL DEFAULT 0,
             created_at  INTEGER NOT NULL
+        );
+
+        -- Balance of one wallet in one money type
+        CREATE TABLE IF NOT EXISTS wallet_balances (
+            wallet_id TEXT NOT NULL REFERENCES wallets(id),
+            currency  TEXT NOT NULL REFERENCES currencies(code),
+            balance   REAL NOT NULL DEFAULT 0,
+            PRIMARY KEY (wallet_id, currency)
         );
 
         CREATE TABLE IF NOT EXISTS holdings (
@@ -188,6 +203,10 @@ fn migrate_v1(conn: &Connection) -> Result<()> {
         INSERT OR IGNORE INTO settings (key, value) VALUES ('language', 'en');
         INSERT OR IGNORE INTO settings (key, value) VALUES ('reminder_interval_hours', '4');  -- on a due day, notify every N hours
         INSERT OR IGNORE INTO settings (key, value) VALUES ('reminder_start_time', '08:00');  -- first notification of the day
+
+        INSERT OR IGNORE INTO currencies (code, name, unit, is_active, sort_order) VALUES ('VND',  'Vietnamese Dong', '₫',   1, 0);
+        INSERT OR IGNORE INTO currencies (code, name, unit, is_active, sort_order) VALUES ('USD',  'US Dollar',       '$',   0, 1);
+        INSERT OR IGNORE INTO currencies (code, name, unit, is_active, sort_order) VALUES ('GOLD', 'Gold',            'chỉ', 0, 2);
     ")
 }
 
@@ -205,8 +224,9 @@ mod tests {
         let mut stmt = conn.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").unwrap();
         let tables: Vec<String> = stmt.query_map([], |r| r.get(0)).unwrap().collect::<Result<_>>().unwrap();
         assert_eq!(tables, [
-            "bills", "categories", "exchange_rates", "families", "holdings", "member_id_images",
-            "members", "reminders", "settings", "transaction_images", "transactions", "wallets",
+            "bills", "categories", "currencies", "exchange_rates", "families", "holdings",
+            "member_id_images", "members", "reminders", "settings", "transaction_images",
+            "transactions", "wallet_balances", "wallets",
         ]);
     }
 }

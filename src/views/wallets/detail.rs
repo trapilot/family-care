@@ -32,7 +32,7 @@ pub fn WalletDetail(view: Signal<WalletView>, wallet: Wallet) -> Element {
         }
     });
 
-    let balance_str = fmt_currency(wallet.balance, &wallet.currency);
+    let balances = wallet.display_balances();
     let is_investment = wallet.wallet_type == WalletType::Investment;
 
     rsx! {
@@ -54,7 +54,7 @@ pub fn WalletDetail(view: Signal<WalletView>, wallet: Wallet) -> Element {
                         h1 { style: "margin:0; font-size:18px; font-weight:700; color:#1f2937;", "{wallet.name}" }
                         span {
                             style: "font-size:12px; color:#9ca3af;",
-                            "{t.code(&wallet.wallet_type.to_string())} · {wallet.currency}"
+                            "{t.code(&wallet.wallet_type.to_string())}"
                             if let Some(ref b) = wallet.broker { " · {b}" }
                         }
                     }
@@ -72,7 +72,12 @@ pub fn WalletDetail(view: Signal<WalletView>, wallet: Wallet) -> Element {
                 div {
                     style: "background:linear-gradient(135deg, #6366f1, #8b5cf6); border-radius:12px; padding:16px; color:#fff;",
                     div { style: "font-size:11px; opacity:.8; text-transform:uppercase; letter-spacing:.5px; margin-bottom:4px;", {t.t("Balance")} }
-                    div { style: "font-size:26px; font-weight:800;", "{balance_str}" }
+                    for (i, b) in balances.iter().enumerate() {
+                        div {
+                            style: if i == 0 { "font-size:26px; font-weight:800;" } else { "font-size:18px; font-weight:700;" },
+                            "{fmt_currency(b.balance, &b.currency)}"
+                        }
+                    }
                 }
             }
 

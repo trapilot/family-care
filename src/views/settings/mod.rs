@@ -1,10 +1,12 @@
 pub mod backup;
 pub mod categories;
+pub mod currencies;
 pub mod reminders;
 
 use dioxus::prelude::*;
 use crate::i18n::use_i18n;
 use categories::CategoriesSettings;
+use currencies::CurrenciesSettings;
 use backup::BackupSettings;
 use reminders::RemindersSettings;
 use crate::app::AppState;
@@ -12,7 +14,7 @@ use crate::i18n::Lang;
 use crate::repository::SettingsRepo;
 
 #[derive(Clone, PartialEq)]
-enum SettingsTab { Categories, Reminders, Backup }
+enum SettingsTab { Categories, Currencies, Reminders, Backup }
 
 #[component]
 pub fn Settings() -> Element {
@@ -33,7 +35,7 @@ pub fn Settings() -> Element {
                 }
                 div {
                     style: "display:flex; border-bottom:1px solid #f3f4f6;",
-                    for (tab_kind, label) in [(SettingsTab::Categories, t.t("Categories")), (SettingsTab::Reminders, t.t("Reminders")), (SettingsTab::Backup, t.t("Backup"))] {
+                    for (tab_kind, label) in [(SettingsTab::Categories, t.t("Categories")), (SettingsTab::Currencies, t.t("Money types")), (SettingsTab::Reminders, t.t("Reminders")), (SettingsTab::Backup, t.t("Backup"))] {
                         {
                             let is_active = *tab.read() == tab_kind;
                             let t_clone = tab_kind.clone();
@@ -57,6 +59,7 @@ pub fn Settings() -> Element {
                 style: "flex:1; overflow-y:auto; padding:16px;",
                 match tab.read().clone() {
                     SettingsTab::Categories => rsx! { CategoriesSettings {} },
+                    SettingsTab::Currencies => rsx! { CurrenciesSettings {} },
                     SettingsTab::Reminders  => rsx! { RemindersSettings {} },
                     SettingsTab::Backup     => rsx! { BackupSettings {} },
                 }
@@ -84,12 +87,13 @@ fn LanguageSelect() -> Element {
                 value: current.code(),
                 onchange: move |e| {
                     let lang = Lang::from_code(&e.value());
+                    // Set first: notification amounts (e.g. the gold unit) follow the language
+                    t.set_lang(lang);
                     let _ = state.with_conn(|conn| {
                         SettingsRepo::set_language(conn, lang.code())?;
                         // Notification text follows the language
                         crate::services::ReminderService::resync(conn)
                     });
-                    t.set_lang(lang);
                 },
                 for lang in Lang::ALL {
                     option { value: lang.code(), selected: lang == current, "{lang.native_name()}" }

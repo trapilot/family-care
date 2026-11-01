@@ -5,9 +5,9 @@ use std::time::Duration;
 use crate::app::AppState;
 use crate::i18n::use_i18n;
 use crate::models::{Currency, ExchangeRate};
-use crate::repository::RateRepo;
+use crate::repository::{CurrencyRepo, RateRepo};
 use crate::services::RateService;
-use crate::views::{fmt_vnd, AmountInput};
+use crate::views::{currency_name, fmt_vnd, AmountInput};
 
 /// How often the background task checks for stale rates (a fetch only happens when stale)
 const CHECK_EVERY: Duration = Duration::from_secs(15 * 60);
@@ -57,10 +57,13 @@ pub fn ConvertedTotal(vnd: Decimal, usd: Decimal, gold: Decimal) -> Element {
     let mut refresh_result = use_signal(|| None::<bool>);
 
     let (total, missing) = RateService::total_vnd(vnd, usd, gold, &rates.read());
-    let missing_names: Vec<&str> = missing.iter().map(|c| match c {
-        Currency::GOLD => t.t("Gold"),
-        _              => "USD",
-    }).collect();
+    let money_types = state.with_conn(|conn| CurrencyRepo::list(conn).unwrap_or_default());
+    let active = state.with_conn(|conn| CurrencyRepo::list_active(conn).unwrap_or_default());
+    let is_shown = |c: &Currency| active.iter().any(|i| &i.code == c);
+    let has_rates = is_shown(&Currency::USD) || is_shown(&Currency::GOLD);
+    let missing_names: Vec<String> = missing.iter().map(|c| currency_name(&t, &money_types, c)).collect();
+    let usd_name = currency_name(&t, &money_types, &Currency::USD);
+    let gold_unit = crate::views::gold_unit();
 
     let on_refresh = move |_| {
         if refreshing() { return; }
@@ -90,19 +93,26 @@ pub fn ConvertedTotal(vnd: Decimal, usd: Decimal, gold: Decimal) -> Element {
                 }
             }
 
-            RateRow { currency: Currency::USD,  unit: "USD" }
-            RateRow { currency: Currency::GOLD, unit: t.t("chỉ") }
-
-            button {
-                style: "border:1px solid #c7d2fe; background:#eef2ff; color:#4f46e5; border-radius:8px; padding:8px; font-size:13px; font-weight:600; cursor:pointer;",
-                disabled: refreshing(),
-                onclick: on_refresh,
-                if refreshing() { {t.t("Updating…")} } else { {t.t("↻ Update rates")} }
+            if is_shown(&Currency::USD) {
+                RateRow { currency: Currency::USD, unit: usd_name }
             }
-            match refresh_result() {
-                Some(true)  => rsx! { div { style: "font-size:11px; color:#10b981;", {t.t("Rates updated")} } },
-                Some(false) => rsx! { div { style: "font-size:11px; color:#ef4444;", {t.t("Couldn't update — check your internet connection")} } },
-                None        => rsx! {},
+            if is_shown(&Currency::GOLD) {
+                RateRow { currency: Currency::GOLD, unit: gold_unit }
+            }
+
+            // Only VND shown: there is no rate to update
+            if has_rates {
+                button {
+                    style: "border:1px solid #c7d2fe; background:#eef2ff; color:#4f46e5; border-radius:8px; padding:8px; font-size:13px; font-weight:600; cursor:pointer;",
+                    disabled: refreshing(),
+                    onclick: on_refresh,
+                    if refreshing() { {t.t("Updating…")} } else { {t.t("↻ Update rates")} }
+                }
+                match refresh_result() {
+                    Some(true)  => rsx! { div { style: "font-size:11px; color:#10b981;", {t.t("Rates updated")} } },
+                    Some(false) => rsx! { div { style: "font-size:11px; color:#ef4444;", {t.t("Couldn't update — check your internet connection")} } },
+                    None        => rsx! {},
+                }
             }
         }
     }
@@ -112,7 +122,7 @@ pub fn ConvertedTotal(vnd: Decimal, usd: Decimal, gold: Decimal) -> Element {
 
 /// One rate with its source/time and an inline editor for typing it in manually.
 #[component]
-fn RateRow(currency: Currency, unit: &'static str) -> Element {
+fn RateRow(currency: Currency, unit: String) -> Element {
     let t = use_i18n();
     let state = use_context::<AppState>();
     let Rates(mut rates) = use_context::<Rates>();

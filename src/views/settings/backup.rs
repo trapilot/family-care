@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 use crate::app::AppState;
-use crate::models::{Category, Family, Holding, IdCardImage, Member, Transaction, Wallet};
-use crate::repository::{CategoryRepo, FamilyRepo, HoldingRepo, IdCardRepo, SettingsRepo, TransactionRepo, WalletRepo};
+use crate::models::{Category, CurrencyInfo, Family, Holding, IdCardImage, Member, Transaction, Wallet};
+use crate::repository::{CategoryRepo, CurrencyRepo, FamilyRepo, HoldingRepo, IdCardRepo, SettingsRepo, TransactionRepo, WalletRepo};
 use crate::views::pin::PinVerifyModal;
 
 // ─── Backup format ────────────────────────────────────────────────────────────
@@ -23,6 +23,9 @@ pub struct BackupData {
     /// CCCD photos; missing in backups made before photos existed
     #[serde(default)]
     pub id_card_images: Vec<IdCardImage>,
+    /// Money types (names, units, order); missing in backups made before multi-currency wallets
+    #[serde(default)]
+    pub currencies: Vec<CurrencyInfo>,
 }
 
 // ─── BackupSettings view ─────────────────────────────────────────────────────
@@ -546,6 +549,7 @@ fn delete_all_data(conn: &rusqlite::Connection) -> crate::error::Result<()> {
         DELETE FROM member_id_images;
         DELETE FROM members;
         DELETE FROM families;
+        DELETE FROM wallet_balances;
         DELETE FROM wallets;
         DELETE FROM categories WHERE is_system = 0;
         COMMIT;
@@ -563,6 +567,7 @@ fn export_backup(conn: &rusqlite::Connection) -> crate::error::Result<String> {
     let members      = load_members(conn);
     let families     = FamilyRepo::list(conn)?;
     let id_card_images = IdCardRepo::list_all(conn)?;
+    let currencies   = CurrencyRepo::list(conn)?;
 
     let data = BackupData {
         app_version:  SettingsRepo::get_app_version(conn)?.unwrap_or_default(),
@@ -574,13 +579,30 @@ fn export_backup(conn: &rusqlite::Connection) -> crate::error::Result<String> {
         members,
         families,
         id_card_images,
+        currencies,
     };
 
     Ok(serde_json::to_string_pretty(&data)?)
 }
 
+/// Parse a backup; wallets from before multi-currency wallets carry one `currency` + `balance`
+/// instead of `balances`, so those are converted first.
+fn parse_backup(json: &str) -> crate::error::Result<BackupData> {
+    let mut value: serde_json::Value = serde_json::from_str(json)?;
+    if let Some(wallets) = value.get_mut("wallets").and_then(|w| w.as_array_mut()) {
+        for w in wallets {
+            let Some(obj) = w.as_object_mut() else { continue };
+            if obj.contains_key("balances") { continue; }
+            if let (Some(currency), Some(balance)) = (obj.get("currency").cloned(), obj.get("balance").cloned()) {
+                obj.insert("balances".into(), serde_json::json!([{ "currency": currency, "balance": balance }]));
+            }
+        }
+    }
+    Ok(serde_json::from_value(value)?)
+}
+
 fn import_backup(conn: &rusqlite::Connection, json: &str) -> crate::error::Result<String> {
-    let data: BackupData = serde_json::from_str(json)?;
+    let data = parse_backup(json)?;
 
     conn.execute_batch("BEGIN IMMEDIATE")?;
 
@@ -590,6 +612,7 @@ fn import_backup(conn: &rusqlite::Connection, json: &str) -> crate::error::Resul
             DELETE FROM transaction_images;
             DELETE FROM transactions;
             DELETE FROM holdings;
+            DELETE FROM wallet_balances;
             DELETE FROM wallets;
             DELETE FROM categories WHERE is_system = 0;
             DELETE FROM member_id_images;
@@ -613,13 +636,27 @@ fn import_backup(conn: &rusqlite::Connection, json: &str) -> crate::error::Resul
         for w in &data.wallets {
             conn.execute(
                 "INSERT OR REPLACE INTO wallets
-                 (id,name,wallet_type,currency,balance,broker,icon,color,is_active,sort_order,created_at)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
+                 (id,name,wallet_type,broker,icon,color,is_active,sort_order,created_at)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
                 rusqlite::params![
-                    w.id, w.name, w.wallet_type.to_string(), w.currency.to_string(),
-                    w.balance_f64(), w.broker, w.icon, w.color,
+                    w.id, w.name, w.wallet_type.to_string(),
+                    w.broker, w.icon, w.color,
                     w.is_active as i32, w.sort_order, w.created_at,
                 ],
+            )?;
+            for b in &w.balances {
+                conn.execute(
+                    "INSERT OR REPLACE INTO wallet_balances (wallet_id,currency,balance) VALUES (?1,?2,?3)",
+                    rusqlite::params![w.id, b.currency.to_string(), crate::models::decimal_to_f64(b.balance)],
+                )?;
+            }
+        }
+
+        // Money types: the rows always exist (seeded), only their details are restored
+        for c in &data.currencies {
+            conn.execute(
+                "UPDATE currencies SET name = ?1, unit = ?2, is_active = ?3, sort_order = ?4 WHERE code = ?5",
+                rusqlite::params![c.name, c.unit, c.is_active as i32, c.sort_order, c.code.to_string()],
             )?;
         }
 
@@ -702,6 +739,7 @@ fn import_backup(conn: &rusqlite::Connection, json: &str) -> crate::error::Resul
     match result {
         Ok(_) => {
             conn.execute_batch("COMMIT")?;
+            CurrencyRepo::refresh_cache(conn)?;
             Ok(format!(
                 "{} families, {} wallets, {} holdings, {} categories, {} transactions, {} members, {} ID photos",
                 data.families.len(), data.wallets.len(), data.holdings.len(),
@@ -845,8 +883,7 @@ mod tests {
             conn.execute_batch(&format!("PRAGMA foreign_keys = {foreign_keys}")).unwrap();
 
             let wallet = WalletRepo::create(&conn, &NewWallet {
-                name: "Cash".into(), wallet_type: WalletType::Cash, currency: Currency::VND,
-                balance: Decimal::ZERO, broker: None, icon: None, color: None, sort_order: 0,
+                name: "Cash".into(), wallet_type: WalletType::Cash, broker: None, icon: None, color: None, sort_order: 0,
             }).unwrap();
             TransactionService::execute(&conn,
                 &NewTransaction::opening_balance(&wallet.id, Decimal::from(5_000), Currency::VND, 1)).unwrap();
@@ -857,9 +894,49 @@ mod tests {
             }).unwrap();
 
             delete_all_data(&conn).unwrap();
-            for table in ["wallets", "transactions", "transaction_images", "reminders", "bills", "holdings", "members", "families", "member_id_images"] {
+            for table in ["wallets", "wallet_balances", "transactions", "transaction_images", "reminders", "bills", "holdings", "members", "families", "member_id_images"] {
                 assert_eq!(count(&conn, table), 0, "{table} not empty (foreign_keys {foreign_keys})");
             }
         }
+    }
+
+    #[test]
+    fn export_then_import_keeps_every_money_type_of_a_wallet() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        crate::db::migrations::run(&conn).unwrap();
+        let wallet = WalletRepo::create(&conn, &NewWallet {
+            name: "Cash".into(), wallet_type: WalletType::Cash, broker: None, icon: None, color: None, sort_order: 0,
+        }).unwrap();
+        for (amount, currency) in [(5_000, Currency::VND), (3, Currency::GOLD)] {
+            TransactionService::execute(&conn,
+                &NewTransaction::opening_balance(&wallet.id, Decimal::from(amount), currency, 1)).unwrap();
+        }
+
+        let json = export_backup(&conn).unwrap();
+        import_backup(&conn, &json).unwrap();
+
+        let w = WalletRepo::find_by_id(&conn, &wallet.id).unwrap().unwrap();
+        assert_eq!(w.balance(&Currency::VND), Decimal::from(5_000));
+        assert_eq!(w.balance(&Currency::GOLD), Decimal::from(3));
+        assert_eq!(w.balance(&Currency::USD), Decimal::ZERO);
+    }
+
+    #[test]
+    fn legacy_backup_wallet_balance_is_restored() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        crate::db::migrations::run(&conn).unwrap();
+        let json = r#"{
+            "app_version": "0.1.0", "exported_at": 1,
+            "wallets": [{
+                "id": "w1", "name": "HSBC", "wallet_type": "bank", "currency": "USD", "balance": 12.5,
+                "broker": null, "icon": null, "color": null, "is_active": true, "sort_order": 0, "created_at": 1
+            }],
+            "holdings": [], "categories": [], "transactions": [], "members": [], "families": []
+        }"#;
+
+        import_backup(&conn, json).unwrap();
+
+        let w = WalletRepo::find_by_id(&conn, "w1").unwrap().unwrap();
+        assert_eq!(w.balance(&Currency::USD), Decimal::try_from(12.5).unwrap());
     }
 }

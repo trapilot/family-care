@@ -14,6 +14,8 @@ pub struct TxnFilter {
     pub txn_types:    Vec<TransactionType>,
     pub date_from:    Option<i64>,
     pub date_to:      Option<i64>,
+    /// Leave out opening balances of 0 (records kept only so they can be edited later)
+    pub skip_zero_opening: bool,
     pub limit:        Option<u32>,
     pub offset:       Option<u32>,
 }
@@ -111,6 +113,10 @@ impl TransactionRepo {
         if let Some(to) = filter.date_to {
             conditions.push(format!("txn_date <= ?{}", params.len() + 1));
             params.push(Box::new(to));
+        }
+
+        if filter.skip_zero_opening {
+            conditions.push("NOT (txn_type = 'opening_balance' AND amount = 0)".to_string());
         }
 
         let where_clause = if conditions.is_empty() {
@@ -228,10 +234,13 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         crate::db::migrations::run(&conn).unwrap();
         CategoryRepo::seed_defaults(&conn).unwrap();
-        let wallet = |name: &str| WalletRepo::create(&conn, &NewWallet {
-            name: name.into(), wallet_type: WalletType::Bank, currency: Currency::VND,
-            balance: Decimal::from(1_000_000), broker: None, icon: None, color: None, sort_order: 0,
-        }).unwrap().id;
+        let wallet = |name: &str| {
+            let id = WalletRepo::create(&conn, &NewWallet {
+                name: name.into(), wallet_type: WalletType::Bank, broker: None, icon: None, color: None, sort_order: 0,
+            }).unwrap().id;
+            TransactionService::execute(&conn, &NewTransaction::opening_balance(&id, Decimal::from(1_000_000), Currency::VND, 0)).unwrap();
+            id
+        };
         let (a, b) = (wallet("A"), wallet("B"));
         let category = CategoryRepo::list(&conn).unwrap()[0].id.clone();
         let amount = Decimal::from(1_000);
@@ -249,7 +258,23 @@ mod tests {
         assert_eq!(types(vec![TransactionType::Income, TransactionType::Transfer]),
                    vec![TransactionType::Income, TransactionType::Transfer]);
         assert_eq!(types(vec![TransactionType::Expense]), vec![TransactionType::Expense]);
-        assert_eq!(types(vec![]).len(), 3, "empty = no type filter");
+        assert_eq!(types(vec![]).len(), 5, "empty = no type filter (3 above + 2 opening balances)");
+    }
+
+    #[test]
+    fn zero_opening_balance_can_be_left_out() {
+        let conn = Connection::open_in_memory().unwrap();
+        crate::db::migrations::run(&conn).unwrap();
+        let wallet = |name: &str| WalletRepo::create(&conn, &NewWallet {
+            name: name.into(), wallet_type: WalletType::Cash, broker: None, icon: None, color: None, sort_order: 0,
+        }).unwrap().id;
+        let (empty, funded) = (wallet("EMPTY"), wallet("FUNDED"));
+        TransactionService::execute(&conn, &NewTransaction::opening_balance(&empty, Decimal::ZERO, Currency::VND, 1)).unwrap();
+        TransactionService::execute(&conn, &NewTransaction::opening_balance(&funded, Decimal::from(500), Currency::VND, 2)).unwrap();
+
+        assert_eq!(TransactionRepo::list(&conn, &TxnFilter::default()).unwrap().len(), 2);
+        let shown = TransactionRepo::list(&conn, &TxnFilter { skip_zero_opening: true, ..Default::default() }).unwrap();
+        assert_eq!(shown.iter().map(|t| t.wallet_id.as_str()).collect::<Vec<_>>(), [funded.as_str()]);
     }
 
     #[test]
@@ -260,14 +285,13 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         crate::db::migrations::run(&conn).unwrap();
         let wallet = WalletRepo::create(&conn, &NewWallet {
-            name: "Cash".into(), wallet_type: WalletType::Cash, currency: Currency::VND,
-            balance: Decimal::ZERO, broker: None, icon: None, color: None, sort_order: 0,
+            name: "Cash".into(), wallet_type: WalletType::Cash, broker: None, icon: None, color: None, sort_order: 0,
         }).unwrap();
         let now = Local::now();
         let opening = TransactionService::execute(&conn,
             &NewTransaction::opening_balance(&wallet.id, Decimal::from(5_000_000), Currency::VND, now.timestamp())).unwrap();
 
-        let balance = || WalletRepo::find_by_id(&conn, &wallet.id).unwrap().unwrap().balance;
+        let balance = || WalletRepo::find_by_id(&conn, &wallet.id).unwrap().unwrap().balance(&Currency::VND);
         assert_eq!(balance(), Decimal::from(5_000_000));
         let summary = ReportService::monthly_summary(&conn, now.year(), now.month()).unwrap();
         assert_eq!(summary.income, Decimal::ZERO, "opening balance is not income");

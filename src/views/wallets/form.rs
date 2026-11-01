@@ -5,10 +5,10 @@ use std::str::FromStr;
 
 use crate::app::AppState;
 use crate::models::{Currency, NewTransaction, NewWallet, Wallet, WalletType};
-use crate::repository::WalletRepo;
+use crate::repository::{CurrencyRepo, WalletRepo};
 use crate::services::TransactionService;
 use super::WalletView;
-use crate::views::{now_ts, AmountInput};
+use crate::views::{currency_name, now_ts, AmountInput};
 
 #[component]
 pub fn WalletForm(view: Signal<WalletView>, editing: Option<Wallet>) -> Element {
@@ -17,17 +17,31 @@ pub fn WalletForm(view: Signal<WalletView>, editing: Option<Wallet>) -> Element 
 
     let mut name        = use_signal(|| editing.as_ref().map(|w| w.name.clone()).unwrap_or_default());
     let mut wallet_type = use_signal(|| editing.as_ref().map(|w| w.wallet_type.clone()).unwrap_or(WalletType::Bank));
-    let mut currency    = use_signal(|| editing.as_ref().map(|w| w.currency.clone()).unwrap_or(Currency::VND));
-    // Opening balance: the wallet's "Opening Balance" transaction (editable later, 0 allowed)
-    let mut balance_str = use_signal({
-        let state = state.clone();
+    // Opening balance rows: the active money types (sort order) plus any hidden type the
+    // wallet already has an opening record for
+    let (money_types, opening) = {
         let editing = editing.clone();
-        move || {
-            editing.as_ref()
-                .and_then(|w| state.with_conn(|conn| TransactionService::find_opening_balance(conn, &w.id).ok().flatten()))
-                .map(|t| t.amount.normalize().to_string())
-                .unwrap_or_else(|| "0".into())
-        }
+        state.with_conn(|conn| {
+            let all = CurrencyRepo::list(conn).unwrap_or_default();
+            let opening = editing.as_ref()
+                .and_then(|w| TransactionService::find_opening_balances(conn, &w.id).ok())
+                .unwrap_or_default();
+            (all, opening)
+        })
+    };
+    let rows: Vec<Currency> = money_types.iter()
+        .filter(|i| i.is_active || opening.iter().any(|o| o.currency == i.code))
+        .map(|i| i.code.clone())
+        .collect();
+    // Opening balance per money type: the wallet's "Opening Balance" transaction (editable later, 0 allowed)
+    let mut balances = use_signal({
+        let rows = rows.clone();
+        move || rows.iter().map(|c| {
+            let amount = opening.iter().find(|o| &o.currency == c)
+                .map(|o| o.amount.normalize().to_string())
+                .unwrap_or_else(|| "0".into());
+            (c.clone(), amount)
+        }).collect::<Vec<(Currency, String)>>()
     });
     let mut broker      = use_signal(|| editing.as_ref().and_then(|w| w.broker.clone()).unwrap_or_default());
     let mut icon        = use_signal(|| editing.as_ref().and_then(|w| w.icon.clone()).unwrap_or_default());
@@ -46,8 +60,7 @@ pub fn WalletForm(view: Signal<WalletView>, editing: Option<Wallet>) -> Element 
         let state = state.clone();
         let name = name.clone();
         let wallet_type = wallet_type.clone();
-        let currency = currency.clone();
-        let balance_str = balance_str.clone();
+        let balances = balances.clone();
         let broker = broker.clone();
         let icon = icon.clone();
         let mut error_msg = error_msg.clone();
@@ -59,14 +72,18 @@ pub fn WalletForm(view: Signal<WalletView>, editing: Option<Wallet>) -> Element 
                 error_msg.set(t.t("Name is required").into());
                 return;
             }
-            // Empty field = 0
-            let balance = match balance_str.read().as_str() {
-                "" => Decimal::ZERO,
-                s  => match Decimal::from_str(s) {
-                    Ok(b) => b,
-                    Err(_) => { error_msg.set(t.t("Invalid balance").into()); return; }
-                },
-            };
+            // Parse every row first so nothing is written when one is invalid (empty = 0)
+            let mut parsed: Vec<(Currency, Decimal)> = vec![];
+            for (cur, raw) in balances.read().iter() {
+                let amount = match raw.as_str() {
+                    "" => Decimal::ZERO,
+                    s  => match Decimal::from_str(s) {
+                        Ok(b) => b,
+                        Err(_) => { error_msg.set(t.t("Invalid balance").into()); return; }
+                    },
+                };
+                parsed.push((cur.clone(), amount));
+            }
             let broker_opt = {
                 let b = broker.read();
                 if b.is_empty() { None } else { Some(b.clone()) }
@@ -76,33 +93,42 @@ pub fn WalletForm(view: Signal<WalletView>, editing: Option<Wallet>) -> Element 
                 if i.is_empty() { None } else { Some(i.clone()) }
             };
 
-            let result = state.with_conn(|conn| {
+            let result = state.with_conn(|conn| -> crate::error::Result<()> {
                 if let Some(ref old) = editing {
                     let mut updated = old.clone();
                     updated.name        = name_val.clone();
                     updated.wallet_type = wallet_type.read().clone();
-                    updated.currency    = currency.read().clone();
                     updated.broker      = broker_opt.clone();
                     updated.icon        = icon_opt.clone();
                     WalletRepo::update(conn, &updated)?;
-                    TransactionService::set_opening_balance(conn, &updated.id, balance, updated.currency.clone(), t.t("Opening Balance"))
+                    for (cur, amount) in &parsed {
+                        TransactionService::set_opening_balance(conn, &updated.id, *amount, cur.clone(), t.t("Opening Balance"))?;
+                    }
+                    Ok(())
                 } else {
-                    // The balance only ever moves through transactions, so the opening amount
-                    // is recorded as an "Opening Balance" transaction on a wallet created at 0.
+                    // The balance only ever moves through transactions, so the opening amounts
+                    // are recorded as "Opening Balance" transactions on a wallet created empty.
                     let wallet = WalletRepo::create(conn, &NewWallet {
                         name: name_val.clone(),
                         wallet_type: wallet_type.read().clone(),
-                        currency: currency.read().clone(),
-                        balance: Decimal::ZERO,
                         broker: broker_opt,
                         icon: icon_opt,
                         color: None,
                         sort_order: 0,
                     })?;
-                    // Recorded even when 0, so it can be changed later from Edit Wallet
-                    let mut opening = NewTransaction::opening_balance(&wallet.id, balance, wallet.currency.clone(), now_ts());
-                    opening.note = Some(t.t("Opening Balance").to_string());
-                    TransactionService::execute(conn, &opening)?;
+                    // One record per non-zero money type; if all are zero, a single 0 record
+                    // so the wallet keeps a dated opening balance that can be edited later
+                    let mut openings: Vec<(Currency, Decimal)> = parsed.iter().filter(|(_, a)| !a.is_zero()).cloned().collect();
+                    if openings.is_empty() {
+                        if let Some((cur, _)) = parsed.first() {
+                            openings.push((cur.clone(), Decimal::ZERO));
+                        }
+                    }
+                    for (cur, amount) in openings {
+                        let mut opening = NewTransaction::opening_balance(&wallet.id, amount, cur, now_ts());
+                        opening.note = Some(t.t("Opening Balance").to_string());
+                        TransactionService::execute(conn, &opening)?;
+                    }
                     Ok(())
                 }
             });
@@ -163,34 +189,27 @@ pub fn WalletForm(view: Signal<WalletView>, editing: Option<Wallet>) -> Element 
                 oninput: move |e| { name.set(e.value().to_uppercase()); },
             }
 
-            // ── Currency ──
-            FieldLabel { label: t.t("Currency") }
-            div {
-                style: "display:flex; gap:8px;",
-                for cur in [Currency::VND, Currency::USD, Currency::GOLD] {
-                    {
-                        let cur_clone = cur.clone();
-                        let is_active = *currency.read() == cur;
-                        rsx! {
-                            button {
-                                style: if is_active {
-                                    "flex:1; padding:10px; border:none; border-radius:8px; background:#6366f1; color:#fff; font-size:14px; font-weight:700; cursor:pointer;"
-                                } else {
-                                    "flex:1; padding:10px; border:1px solid #e5e7eb; border-radius:8px; background:#fff; color:#6b7280; font-size:14px; cursor:pointer;"
+            // ── Opening balance, one row per money type (new and edit) ──
+            FieldLabel { label: t.t("Opening Balance") }
+            for (cur, amount) in balances.read().clone() {
+                {
+                    let cur_for_input = cur.clone();
+                    let label = currency_name(&t, &money_types, &cur);
+                    rsx! {
+                        div {
+                            style: "display:flex; flex-direction:column; gap:4px;",
+                            span { style: "font-size:12px; color:#6b7280;", "{label}" }
+                            AmountInput {
+                                value: amount,
+                                oninput: move |v: String| {
+                                    for row in balances.write().iter_mut() {
+                                        if row.0 == cur_for_input { row.1 = v.clone(); }
+                                    }
                                 },
-                                onclick: move |_| { currency.set(cur_clone.clone()); },
-                                "{cur}"
                             }
                         }
                     }
                 }
-            }
-
-            // ── Opening balance (new and edit) ──
-            FieldLabel { label: t.t("Opening Balance") }
-            AmountInput {
-                value: balance_str.read().clone(),
-                oninput: move |v| balance_str.set(v),
             }
 
             // ── Broker (investment only) ──
