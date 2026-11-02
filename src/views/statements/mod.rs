@@ -5,7 +5,7 @@ use rust_decimal::Decimal;
 use crate::error::AppError;
 use crate::i18n::use_i18n;
 use crate::models::{CounterpartyAccount, Statement, StatementTxn};
-use crate::services::statement::{ocr, parser, store};
+use crate::services::statement::{ocr, store, Bank};
 use crate::services::StatementService;
 use crate::views::photo_picker::{use_photo_picker, PhotoInput};
 use crate::views::{fmt_vnd, now_ts};
@@ -22,9 +22,9 @@ fn err_msg(e: &AppError) -> String {
 }
 
 /// Read one photo, parse it and save it to the statements file
-async fn import_photo(jpeg: Vec<u8>) -> Result<(), AppError> {
+async fn import_photo(bank: Bank, jpeg: Vec<u8>) -> Result<(), AppError> {
     let page = ocr::recognize_async(jpeg).await?;
-    let parsed = parser::parse(&page)?;
+    let parsed = bank.parse(&page)?;
     store::add(Statement {
         id: uuid::Uuid::new_v4().to_string(),
         imported_at: now_ts(),
@@ -43,6 +43,7 @@ async fn import_photo(jpeg: Vec<u8>) -> Result<(), AppError> {
 pub fn Statements() -> Element {
     let t = use_i18n();
     let mut tab = use_signal(|| StatementsTab::Accounts);
+    let mut bank = use_signal(Bank::default);
     let mut selected = use_signal(Vec::<String>::new);
     let mut version = use_signal(|| 0u32);
     let mut errors = use_signal(Vec::<(usize, String)>::new);
@@ -50,10 +51,10 @@ pub fn Statements() -> Element {
     let mut done = use_signal(|| 0usize);
 
     // Photos are read one after another so the UI never freezes
-    let importer = use_coroutine(move |mut rx: UnboundedReceiver<Vec<u8>>| async move {
-        while let Some(jpeg) = rx.next().await {
+    let importer = use_coroutine(move |mut rx: UnboundedReceiver<(Bank, Vec<u8>)>| async move {
+        while let Some((bank, jpeg)) = rx.next().await {
             let n = done() + 1;
-            match import_photo(jpeg).await {
+            match import_photo(bank, jpeg).await {
                 Ok(()) => version += 1,
                 Err(e) => errors.write().push((n, err_msg(&e))),
             }
@@ -68,7 +69,7 @@ pub fn Statements() -> Element {
     use_photo_picker(move |_, jpeg| match jpeg {
         Some(jpeg) => {
             total += 1;
-            importer.send(jpeg);
+            importer.send((bank(), jpeg));
         }
         None => {
             let n = total() + 1;
@@ -126,6 +127,19 @@ pub fn Statements() -> Element {
                             style: "{photo_btn}",
                             "📸"
                             PhotoInput { key_name: "statement", camera: true, max_size: 3000 }
+                        }
+                    }
+                }
+                label {
+                    style: "display:flex; align-items:center; gap:8px; margin:0 0 12px; font-size:13px; color:#6b7280;",
+                    {t.t("Bank")}
+                    select {
+                        style: "flex:1; border:1px solid #e5e7eb; border-radius:8px; padding:6px 8px; font-size:14px; background:#fff; color:#1f2937;",
+                        aria_label: t.t("Bank"),
+                        value: bank().code(),
+                        onchange: move |e| bank.set(Bank::from_code(&e.value())),
+                        for b in Bank::ALL {
+                            option { value: b.code(), selected: b == bank(), "{b.name()}" }
                         }
                     }
                 }

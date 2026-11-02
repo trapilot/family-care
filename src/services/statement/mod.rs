@@ -8,6 +8,41 @@ use rust_decimal::Decimal;
 
 use crate::models::{CounterpartyAccount, Statement, StatementTxn};
 
+/// Bank whose statement layout is used to read photos
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Bank {
+    #[default]
+    Techcombank,
+}
+
+impl Bank {
+    pub const ALL: [Bank; 1] = [Bank::Techcombank];
+
+    pub fn code(self) -> &'static str {
+        match self {
+            Bank::Techcombank => "tcb",
+        }
+    }
+
+    /// Unknown codes fall back to the default bank
+    pub fn from_code(code: &str) -> Self {
+        Self::ALL.into_iter().find(|b| b.code() == code).unwrap_or_default()
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Bank::Techcombank => "Techcombank",
+        }
+    }
+
+    /// Parse one recognized page with this bank's layout
+    pub fn parse(self, page: &ocr::OcrPage) -> crate::error::Result<parser::ParsedPage> {
+        match self {
+            Bank::Techcombank => parser::parse(page),
+        }
+    }
+}
+
 /// Grouping of imported statement transactions by counterparty account.
 pub struct StatementService;
 
