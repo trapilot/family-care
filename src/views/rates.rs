@@ -7,7 +7,9 @@ use crate::i18n::use_i18n;
 use crate::models::{Currency, ExchangeRate};
 use crate::repository::{CurrencyRepo, RateRepo};
 use crate::services::RateService;
-use crate::views::{currency_name, fmt_vnd, AmountInput};
+use crate::views::icons::{Icon, IconName};
+use crate::views::ui::IconText;
+use crate::views::{currency_name, fmt_vnd, theme, AmountInput};
 
 /// How often the background task checks for stale rates (a fetch only happens when stale)
 const CHECK_EVERY: Duration = Duration::from_secs(15 * 60);
@@ -82,12 +84,12 @@ pub fn ConvertedTotal(vnd: Decimal, usd: Decimal, gold: Decimal) -> Element {
 
     rsx! {
         div {
-            style: "background:#fff; border-radius:12px; padding:12px 14px; box-shadow:0 1px 3px rgba(0,0,0,.08); display:flex; flex-direction:column; gap:8px;",
+            style: "{theme::CARD} display:flex; flex-direction:column; gap:10px;",
             div {
-                div { style: "font-size:10px; font-weight:600; color:#9ca3af; text-transform:uppercase;", {t.t("Total (converted)")} }
-                div { style: "font-size:18px; font-weight:800; color:#1f2937; margin-top:2px; overflow-wrap:anywhere;", "≈ {fmt_vnd(total)}" }
+                div { style: "font-size:13px; font-weight:600; color:{theme::TEXT_MUTED};", {t.t("Total (converted)")} }
+                div { style: "font-size:16px; font-weight:600; color:{theme::TEXT}; margin-top:2px; overflow-wrap:anywhere;", "≈ {fmt_vnd(total)}" }
                 if !missing_names.is_empty() {
-                    div { style: "font-size:11px; color:#f59e0b; margin-top:2px;",
+                    div { style: "font-size:12px; color:#f59e0b; margin-top:2px;",
                         {t.t("Not included (no rate yet): {list}").replace("{list}", &missing_names.join(", "))}
                     }
                 }
@@ -103,14 +105,19 @@ pub fn ConvertedTotal(vnd: Decimal, usd: Decimal, gold: Decimal) -> Element {
             // Only VND shown: there is no rate to update
             if has_rates {
                 button {
-                    style: "border:1px solid #c7d2fe; background:#eef2ff; color:#4f46e5; border-radius:8px; padding:8px; font-size:13px; font-weight:600; cursor:pointer;",
+                    style: "{theme::BTN_SECONDARY} padding:8px 14px; font-size:13px; display:flex; align-items:center; justify-content:center; gap:6px;",
                     disabled: refreshing(),
                     onclick: on_refresh,
-                    if refreshing() { {t.t("Updating…")} } else { {t.t("↻ Update rates")} }
+                    if refreshing() {
+                        Icon { name: IconName::RefreshCw, size: 16 }
+                        {t.t("Updating…")}
+                    } else {
+                        IconText { text: t.t("↻ Update rates").to_string() }
+                    }
                 }
                 match refresh_result() {
-                    Some(true)  => rsx! { div { style: "font-size:11px; color:#10b981;", {t.t("Rates updated")} } },
-                    Some(false) => rsx! { div { style: "font-size:11px; color:#ef4444;", {t.t("Couldn't update — check your internet connection")} } },
+                    Some(true)  => rsx! { div { style: "font-size:12px; color:{theme::POSITIVE};", {t.t("Rates updated")} } },
+                    Some(false) => rsx! { div { style: "font-size:12px; color:{theme::DANGER};", {t.t("Couldn't update — check your internet connection")} } },
                     None        => rsx! {},
                 }
             }
@@ -174,31 +181,31 @@ fn RateRow(currency: Currency, unit: String) -> Element {
     rsx! {
         if editing() {
             div { style: "display:flex; flex-direction:column; gap:6px;",
-                div { style: "font-size:12px; color:#6b7280;", "1 {unit} = ? ₫" }
+                div { style: "font-size:13px; color:{theme::TEXT_MUTED};", "1 {unit} = ? ₫" }
                 div { style: "display:flex; gap:6px; align-items:center;",
                     AmountInput {
-                        style: "flex:1; min-width:0; border:1px solid #6366f1; border-radius:8px; padding:8px 10px; font-size:16px; outline:none;",
+                        style: "flex:1; min-width:0; box-sizing:border-box; border:1px solid #3f51b5; border-radius:12px; padding:10px 12px; font-size:15px; outline:none; color:#1f2133;",
                         value: input(),
                         placeholder: t.t("Empty = no rate").to_string(),
                         oninput: move |v| input.set(v),
                     }
                     button {
-                        style: "padding:8px 12px; background:#6366f1; color:#fff; border:none; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer;",
+                        style: "{theme::BTN_PRIMARY} padding:10px 14px; font-size:13px;",
                         onclick: save,
                         {t.t("Save")}
                     }
                     button {
-                        style: "padding:8px 10px; background:#f3f4f6; color:#6b7280; border:none; border-radius:8px; font-size:13px; cursor:pointer;",
+                        style: "{theme::BTN_SECONDARY} padding:10px 12px; font-size:13px; display:flex; align-items:center;",
                         onclick: move |_| editing.set(false),
-                        "✕"
+                        Icon { name: IconName::X, size: 16 }
                     }
                 }
                 if let Some(err) = error() {
-                    div { style: "font-size:11px; color:#ef4444;", "{err}" }
+                    div { style: "font-size:12px; color:{theme::DANGER};", "{err}" }
                 }
                 if has_rate {
                     button {
-                        style: "align-self:flex-start; border:none; background:transparent; color:#ef4444; font-size:12px; cursor:pointer; padding:2px 0;",
+                        style: "align-self:flex-start; border:none; background:transparent; color:{theme::DANGER}; font-size:12px; cursor:pointer; padding:2px 0;",
                         onclick: {
                             let state = state_clear.clone();
                             let currency = currency.clone();
@@ -214,19 +221,31 @@ fn RateRow(currency: Currency, unit: String) -> Element {
         } else {
             div { style: "display:flex; align-items:center; gap:8px;",
                 div { style: "flex:1; min-width:0;",
-                    div { style: "font-size:13px; font-weight:600; color:#374151; overflow-wrap:anywhere;", "1 {unit} = {value}" }
-                    div { style: "font-size:11px; color:#9ca3af;",
+                    div { style: "font-size:14px; font-weight:600; color:{theme::TEXT}; overflow-wrap:anywhere;", "1 {unit} = {value}" }
+                    div { style: "font-size:12px; color:{theme::TEXT_MUTED};",
                         match meta {
                             Some(meta) => rsx! { "{meta}" },
-                            None       => rsx! { {t.t("No rate yet — update online or tap ✏️ to enter it")} },
+                            None       => {
+                                let hint = t.t("No rate yet — update online or tap ✏️ to enter it").replace("✏️", "✏");
+                                rsx! {
+                                    for (i, part) in hint.split('✏').enumerate() {
+                                        if i > 0 {
+                                            span { style: "display:inline-flex; vertical-align:middle;",
+                                                Icon { name: IconName::Pencil, size: 13 }
+                                            }
+                                        }
+                                        "{part}"
+                                    }
+                                }
+                            }
                         }
                     }
                 }
                 button {
-                    style: "border:none; background:transparent; font-size:16px; cursor:pointer; padding:4px; flex-shrink:0;",
+                    style: "border:none; background:transparent; cursor:pointer; padding:6px; flex-shrink:0; display:flex; align-items:center;",
                     aria_label: t.t("Edit"),
                     onclick: start_edit,
-                    "✏️"
+                    Icon { name: IconName::Pencil, size: 18, color: theme::TEXT_MUTED.to_string() }
                 }
             }
         }

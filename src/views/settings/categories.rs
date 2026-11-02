@@ -7,6 +7,9 @@ use crate::app::AppState;
 use crate::models::{Category, NewCategory};
 use crate::repository::CategoryRepo;
 use crate::views::AmountInput;
+use crate::views::icons::{Icon, IconName};
+use crate::views::theme;
+use crate::views::ui::{IconCircle, IconPicker, ScreenHeader};
 
 #[derive(Clone, PartialEq)]
 enum CatMode { List, Add, Edit(Category) }
@@ -64,9 +67,9 @@ fn CatList(
             // ── Header ──
             div {
                 style: "display:flex; justify-content:space-between; align-items:center;",
-                h2 { style: "margin:0; font-size:16px; font-weight:700; color:#1f2937;", {t.t("Categories")} }
+                h2 { style: "{theme::SECTION_TITLE}", {t.t("Categories")} }
                 button {
-                    style: "background:#6366f1; color:#fff; border:none; border-radius:20px; padding:8px 16px; font-size:14px; font-weight:600; cursor:pointer;",
+                    style: "background:{theme::PRIMARY}; color:#fff; border:none; border-radius:999px; padding:8px 16px; font-size:14px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:6px;",
                     onclick: move |_| { mode.set(CatMode::Add); },
                     {t.t("+ Add")}
                 }
@@ -75,7 +78,7 @@ fn CatList(
             // ── User categories ──
             if !user_cats.is_empty() {
                 div {
-                    style: "background:#fff; border-radius:12px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,.06);",
+                    style: "background:#fff; border-radius:16px; overflow:hidden;",
                     SectionLabel { text: t.t("Custom") }
                     for cat in user_cats.iter() {
                         CatRow {
@@ -96,7 +99,7 @@ fn CatList(
             // ── System categories (read-only) ──
             if !system_cats.is_empty() {
                 div {
-                    style: "background:#fff; border-radius:12px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,.06);",
+                    style: "background:#fff; border-radius:16px; overflow:hidden;",
                     SectionLabel { text: t.t("System (read-only)") }
                     for cat in system_cats.iter() {
                         CatRow {
@@ -111,19 +114,19 @@ fn CatList(
             // ── Delete confirm ──
             if let Some(cat_id) = confirm.read().clone() {
                 div {
-                    style: "position:fixed; inset:0; background:rgba(0,0,0,.4); display:flex; align-items:center; justify-content:center; z-index:100;",
+                    style: "{theme::OVERLAY}",
                     div {
-                        style: "background:#fff; border-radius:16px; padding:24px; margin:16px; max-width:320px; width:100%;",
-                        h3 { style: "margin:0 0 8px; font-size:17px;", {t.t("Delete category?")} }
-                        p  { style: "margin:0 0 20px; font-size:14px; color:#6b7280;", {t.t("Categories in use by transactions cannot be deleted.")} }
+                        style: "{theme::DIALOG}",
+                        h3 { style: "margin:0 0 8px; font-size:16px; font-weight:600; color:{theme::TEXT};", {t.t("Delete category?")} }
+                        p  { style: "margin:0 0 20px; font-size:14px; color:{theme::TEXT_MUTED};", {t.t("Categories in use by transactions cannot be deleted.")} }
                         div { style: "display:flex; gap:10px;",
                             button {
-                                style: "flex:1; padding:10px; border:1px solid #e5e7eb; border-radius:8px; background:#fff; cursor:pointer; font-size:14px;",
+                                style: "{theme::BTN_SECONDARY} flex:1;",
                                 onclick: move |_| { confirm.set(None); },
                                 {t.t("Cancel")}
                             }
                             button {
-                                style: "flex:1; padding:10px; border:none; border-radius:8px; background:#ef4444; color:#fff; cursor:pointer; font-size:14px; font-weight:600;",
+                                style: "{theme::BTN_DANGER} flex:1;",
                                 onclick: {
                                     let state = state.clone();
                                     let cat_id = cat_id.clone();
@@ -159,7 +162,7 @@ fn CatForm(
 
     let mut name          = use_signal(|| editing.as_ref().map(|c| c.name.clone()).unwrap_or_default());
     let mut icon          = use_signal(|| editing.as_ref().and_then(|c| c.icon.clone()).unwrap_or_default());
-    let mut color         = use_signal(|| editing.as_ref().and_then(|c| c.color.clone()).unwrap_or_else(|| "#6366f1".into()));
+    let mut color         = use_signal(|| editing.as_ref().and_then(|c| c.color.clone()).unwrap_or_else(|| "#3f51b5".into()));
     let mut budget_str    = use_signal(|| editing.as_ref().and_then(|c| c.budget_amount.map(|b| format!("{b}"))).unwrap_or_default());
     let error_msg     = use_signal(|| String::new());
 
@@ -224,19 +227,16 @@ fn CatForm(
         div {
             style: "display:flex; flex-direction:column; gap:14px;",
 
-            div {
-                style: "display:flex; align-items:center; gap:12px;",
-                button {
-                    style: "border:none; background:transparent; font-size:22px; cursor:pointer; padding:0;",
-                    onclick: move |_| { mode.set(CatMode::List); },
-                    "←"
+            div { style: "margin:-16px -16px 0;",
+                ScreenHeader {
+                    title: title.to_string(),
+                    on_back: move |_| { mode.set(CatMode::List); },
                 }
-                h1 { style: "margin:0; font-size:18px; font-weight:700; color:#1f2937;", "{title}" }
             }
 
             FieldLabel { label: t.t("Name") }
             input {
-                style: "border:1px solid #e5e7eb; border-radius:8px; padding:10px 12px; font-size:16px; outline:none; background:#fff;",
+                style: "{theme::INPUT}",
                 r#type: "text",
                 placeholder: t.t("e.g. Food & Drinks"),
                 value: "{name.read()}",
@@ -244,31 +244,17 @@ fn CatForm(
             }
 
             FieldLabel { label: t.t("Icon") }
-            div {
-                style: "display:flex; flex-wrap:wrap; gap:8px;",
-                for emoji in preset_icons.iter() {
-                    {
-                        let e = emoji.to_string();
-                        let is_active = *icon.read() == *emoji;
-                        rsx! {
-                            button {
-                                style: if is_active {
-                                    "width:40px; height:40px; border:2px solid #6366f1; border-radius:8px; background:#eef2ff; font-size:20px; cursor:pointer;"
-                                } else {
-                                    "width:40px; height:40px; border:1px solid #e5e7eb; border-radius:8px; background:#fff; font-size:20px; cursor:pointer;"
-                                },
-                                onclick: move |_| { icon.set(e.clone()); },
-                                "{emoji}"
-                            }
-                        }
-                    }
-                }
+            IconPicker {
+                value: icon.read().clone(),
+                options: preset_icons.to_vec(),
+                color: color.read().clone(),
+                on_select: move |e: String| { icon.set(e); },
             }
 
             FieldLabel { label: t.t("Color") }
             div {
                 style: "display:flex; flex-wrap:wrap; gap:8px;",
-                for hex in ["#6366f1","#10b981","#ef4444","#f59e0b","#8b5cf6","#ec4899","#06b6d4","#84cc16","#f97316","#6b7280"] {
+                for hex in ["#3f51b5","#17a589","#e5527f","#f59e0b","#8b5cf6","#ec4899","#06b6d4","#84cc16","#f97316","#8a8d9f"] {
                     {
                         let h = hex.to_string();
                         let is_active = *color.read() == hex;
@@ -276,7 +262,7 @@ fn CatForm(
                             "width:32px;height:32px;border-radius:50%;background:{};border:{};cursor:pointer;",
                             hex,
                             if is_active {
-                                "3px solid #1f2937"
+                                "3px solid #1f2133"
                             } else {
                                 "2px solid transparent"
                             }
@@ -300,13 +286,13 @@ fn CatForm(
 
             if !error_msg.read().is_empty() {
                 div {
-                    style: "background:#fef2f2; border-radius:8px; padding:10px; font-size:13px; color:#ef4444;",
+                    style: "background:{theme::NEGATIVE_SOFT}; border-radius:12px; padding:10px 12px; font-size:13px; color:{theme::DANGER};",
                     "{error_msg.read()}"
                 }
             }
 
             button {
-                style: "padding:14px; background:#6366f1; color:#fff; border:none; border-radius:12px; font-size:16px; font-weight:700; cursor:pointer;",
+                style: "{theme::BTN_PRIMARY}",
                 onclick: submit,
                 if editing.is_some() { {t.t("Update")} } else { {t.t("Create Category")} }
             }
@@ -324,32 +310,34 @@ fn CatRow(
 ) -> Element {
     let t = use_i18n();
     let icon  = cat.icon.as_deref().unwrap_or("📦");
-    let color = cat.color.as_deref().unwrap_or("#6b7280");
+    let color = cat.color.as_deref().unwrap_or("#8a8d9f");
     let budget_label = cat.budget_amount
         .map(|b| format!("{}: {b:.0} ₫", t.t("Budget")))
         .unwrap_or_else(|| t.t("No budget").into());
 
     rsx! {
         div {
-            style: "display:flex; align-items:center; gap:12px; padding:12px 16px; border-bottom:1px solid #f9fafb;",
-            div {
-                style: "width:36px; height:36px; border-radius:8px; background:{color}22; display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0;",
-                "{icon}"
+            style: "display:flex; align-items:center; gap:12px; padding:12px 16px; {theme::ROW_DIVIDER}",
+            IconCircle {
+                icon: Some(icon.to_string()),
+                fallback: IconName::Tag,
+                color: color.to_string(),
+                size: 40,
             }
-            div { style: "flex:1;",
-                div { style: "font-size:14px; font-weight:600; color:#374151;", {t.tr(&cat.name)} }
-                div { style: "font-size:11px; color:#9ca3af;", "{budget_label}" }
+            div { style: "flex:1; min-width:0;",
+                div { style: "font-size:15px; font-weight:600; color:{theme::TEXT};", {t.tr(&cat.name)} }
+                div { style: "font-size:13px; color:{theme::TEXT_MUTED};", "{budget_label}" }
             }
             if !cat.is_system {
                 button {
-                    style: "border:none; background:transparent; font-size:18px; cursor:pointer; padding:4px;",
+                    style: "border:none; background:transparent; cursor:pointer; padding:6px; display:flex;",
                     onclick: move |e| { on_edit.call(e); },
-                    "✏️"
+                    Icon { name: IconName::Pencil, size: 20, color: theme::TEXT_MUTED.to_string() }
                 }
                 button {
-                    style: "border:none; background:transparent; font-size:18px; cursor:pointer; padding:4px;",
+                    style: "border:none; background:transparent; cursor:pointer; padding:6px; display:flex;",
                     onclick: move |e| { on_delete.call(e); },
-                    "🗑"
+                    Icon { name: IconName::Trash, size: 20, color: theme::DANGER.to_string() }
                 }
             }
         }
@@ -360,7 +348,7 @@ fn CatRow(
 fn SectionLabel(text: &'static str) -> Element {
     rsx! {
         div {
-            style: "padding:8px 16px; background:#f9fafb; font-size:11px; font-weight:700; color:#9ca3af; text-transform:uppercase; letter-spacing:.5px;",
+            style: "padding:10px 16px 6px; font-size:14px; font-weight:600; color:{theme::TEXT};",
             "{text}"
         }
     }
@@ -370,7 +358,7 @@ fn SectionLabel(text: &'static str) -> Element {
 fn FieldLabel(label: &'static str) -> Element {
     rsx! {
         label {
-            style: "font-size:12px; font-weight:600; color:#374151; text-transform:uppercase; letter-spacing:.5px;",
+            style: "{theme::LABEL}",
             "{label}"
         }
     }

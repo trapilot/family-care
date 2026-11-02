@@ -4,8 +4,11 @@ use crate::i18n::use_i18n;
 use crate::app::AppState;
 use crate::models::{Currency, CurrencyInfo, Wallet, WalletType};
 use crate::repository::{CurrencyRepo, WalletRepo};
-use crate::views::{currency_color, currency_name, fmt_currency, shown_totals};
+use crate::views::icons::{Icon, IconName};
+use crate::views::ui::{HeaderAction, ScreenHeader, IconTile, SectionTitle};
+use crate::views::{currency_name, fmt_currency, fmt_vnd, shown_totals, theme};
 use crate::views::rates::ConvertedTotal;
+use rust_decimal::Decimal;
 use super::WalletView;
 
 #[component]
@@ -53,60 +56,77 @@ pub fn WalletList(view: Signal<WalletView>) -> Element {
     // Net worth per currency
     let total_of = |c: Currency| -> rust_decimal::Decimal { regular.iter().map(|w| w.balance(&c)).sum() };
     let (total_vnd, total_usd, total_gold) = (total_of(Currency::VND), total_of(Currency::USD), total_of(Currency::GOLD));
-    let cards = shown_totals(&money_types.read(), total_vnd, total_usd, total_gold);
-    let card_count = cards.len();
+    let rows = shown_totals(&money_types.read(), total_vnd, total_usd, total_gold);
 
     rsx! {
         div {
-            style: "padding:16px; display:flex; flex-direction:column; gap:16px;",
+            style: "display:flex; flex-direction:column;",
 
-            // ── Header ──
-            div {
-                style: "display:flex; justify-content:space-between; align-items:center;",
-                h1 { style: "margin:0; font-size:20px; font-weight:700; color:#1f2937;", {t.t("Wallets")} }
-                button {
-                    style: "background:#6366f1; color:#fff; border:none; border-radius:20px; padding:8px 16px; font-size:14px; font-weight:600; cursor:pointer;",
-                    onclick: move |_| { view.set(WalletView::Add); },
-                    {t.t("+ Add")}
-                }
-            }
-
-            // ── Totals ──
-            div {
-                style: "display:grid; grid-template-columns:repeat({card_count},1fr); gap:8px;",
-                for (cur, total) in cards {
-                    TotalCard {
-                        label: currency_name(&t, &money_types.read(), &cur),
-                        value: fmt_currency(total, &cur),
-                        color: currency_color(&cur),
+            ScreenHeader {
+                title: t.t("Wallets").to_string(),
+                action: rsx! {
+                    HeaderAction {
+                        icon: IconName::Plus,
+                        label: t.t("Add").to_string(),
+                        onclick: move |_| { view.set(WalletView::Add); },
                     }
-                }
+                },
             }
-            ConvertedTotal { vnd: total_vnd, usd: total_usd, gold: total_gold }
 
-            // ── Wallets grouped by type: Cash > Bank > E-Wallet > Investment > Loan ──
-            for (title, group) in groups.iter() {
-                SectionHeader { title: t.t(title) }
-                for wallet in group.iter() {
-                    WalletCard {
-                        wallet: wallet.clone(),
-                        on_tap: {
-                            let w = wallet.clone();
-                            move |_| { view.set(WalletView::Detail(w.clone())); }
-                        },
-                        on_edit: {
-                            let w = wallet.clone();
-                            move |_| { view.set(WalletView::Edit(w.clone())); }
+            div {
+                style: "padding:16px; display:flex; flex-direction:column; gap:16px;",
+
+                // ── Totals per money type ──
+                div {
+                    style: "{theme::CARD} display:flex; flex-direction:column; gap:8px;",
+                    for (cur, total) in rows {
+                        div {
+                            style: "display:flex; justify-content:space-between; align-items:baseline; gap:8px;",
+                            span { style: "font-size:13px; color:{theme::TEXT_MUTED};", "{currency_name(&t, &money_types.read(), &cur)}" }
+                            span {
+                                style: if total < Decimal::ZERO { "font-size:14px; font-weight:600; color:#e5527f; overflow-wrap:anywhere;" } else { "font-size:14px; font-weight:600; color:#17a589; overflow-wrap:anywhere;" },
+                                "{fmt_currency(total, &cur)}"
+                            }
                         }
                     }
                 }
-            }
+                ConvertedTotal { vnd: total_vnd, usd: total_usd, gold: total_gold }
 
-            if wallets.read().is_empty() {
-                div {
-                    style: "text-align:center; padding:40px 0; color:#9ca3af;",
-                    p { style: "font-size:32px; margin:0;", "👛" }
-                    p { style: "font-size:14px; margin:8px 0 0;", {t.t("No wallets yet. Add one!")} }
+                // ── Wallets grouped by type: Cash > Bank > E-Wallet > Investment > Loan ──
+                for (title, group) in groups.iter() {
+                    {
+                        let vnd_sum: Decimal = group.iter().map(|w| w.balance(&Currency::VND)).sum();
+                        let has_other = group.iter().any(|w| w.balances.iter().any(|b| b.currency != Currency::VND && !b.balance.is_zero()));
+                        let trailing = if vnd_sum.is_zero() && has_other { None } else { Some(fmt_vnd(vnd_sum)) };
+                        let trailing_color = if vnd_sum < Decimal::ZERO { theme::NEGATIVE } else { theme::POSITIVE };
+                        rsx! {
+                            div {
+                                style: "display:flex; flex-direction:column; gap:14px;",
+                                SectionTitle { title: t.t(title).to_string(), trailing, trailing_color }
+                                for wallet in group.iter() {
+                                    WalletRow {
+                                        wallet: wallet.clone(),
+                                        on_tap: {
+                                            let w = wallet.clone();
+                                            move |_| { view.set(WalletView::Detail(w.clone())); }
+                                        },
+                                        on_edit: {
+                                            let w = wallet.clone();
+                                            move |_| { view.set(WalletView::Edit(w.clone())); }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if wallets.read().is_empty() {
+                    div {
+                        style: "text-align:center; padding:40px 0; color:{theme::TEXT_MUTED}; display:flex; flex-direction:column; align-items:center; gap:8px;",
+                        Icon { name: IconName::Wallet, size: 40, color: theme::TEXT_MUTED.to_string() }
+                        p { style: "font-size:14px; margin:0;", {t.t("No wallets yet. Add one!")} }
+                    }
                 }
             }
         }
@@ -116,75 +136,50 @@ pub fn WalletList(view: Signal<WalletView>) -> Element {
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 #[component]
-fn TotalCard(label: String, value: String, color: &'static str) -> Element {
-    rsx! {
-        div {
-            style: "background:#fff; border-radius:10px; padding:10px; box-shadow:0 1px 3px rgba(0,0,0,.06); border-left:3px solid {color};",
-            div { style: "font-size:10px; font-weight:600; color:#9ca3af; text-transform:uppercase;", "{label}" }
-            div { style: "font-size:12px; font-weight:700; color:#1f2937; margin-top:2px; word-break:break-all;", "{value}" }
-        }
-    }
-}
-
-#[component]
-fn SectionHeader(title: &'static str) -> Element {
-    rsx! {
-        h2 { style: "margin:0; font-size:13px; font-weight:700; color:#6b7280; text-transform:uppercase; letter-spacing:.5px;", "{title}" }
-    }
-}
-
-#[component]
-fn WalletCard(
+fn WalletRow(
     wallet: Wallet,
     on_tap:  EventHandler<MouseEvent>,
     on_edit: EventHandler<MouseEvent>,
 ) -> Element {
     let (type_icon, type_color) = match wallet.wallet_type {
-        WalletType::Cash       => ("💵", "#10b981"),
-        WalletType::Bank       => ("🏦", "#6366f1"),
-        WalletType::Loan       => ("🤝", "#bb3baaff"),
-        WalletType::EWallet    => ("📱", "#f59e0b"),
-        WalletType::Investment => ("📈", "#8b5cf6"),
+        WalletType::Cash       => (IconName::Banknote, "#17a589"),
+        WalletType::Bank       => (IconName::Landmark, "#3f51b5"),
+        WalletType::Loan       => (IconName::Handshake, "#bb3baa"),
+        WalletType::EWallet    => (IconName::Smartphone, "#f59e0b"),
+        WalletType::Investment => (IconName::TrendingUp, "#8b5cf6"),
     };
-    let icon = wallet.icon.as_deref().unwrap_or(type_icon);
+    let balances = wallet.display_balances();
+    let several = balances.len() > 1;
 
     rsx! {
         div {
-            style: "background:#fff; border-radius:12px; padding:14px; box-shadow:0 1px 3px rgba(0,0,0,.06); display:flex; align-items:center; gap:12px;",
+            style: "display:flex; align-items:center; gap:12px; cursor:pointer;",
             onclick: move |e| { on_tap.call(e); },
 
-            div {
-                style: "width:42px; height:42px; border-radius:10px; background:{type_color}22; display:flex; align-items:center; justify-content:center; font-size:22px; flex-shrink:0;",
-                "{icon}"
-            }
+            IconTile { icon: wallet.icon.clone(), fallback: type_icon, color: type_color.to_string(), size: 40, filled: true }
 
             div { style: "flex:1; min-width:0;",
-                div { style: "font-size:15px; font-weight:600; color:#1f2937; overflow-wrap:anywhere;", "{wallet.name}" }
+                div { style: "font-size:14px; color:{theme::TEXT}; overflow-wrap:anywhere;", "{wallet.name}" }
+                for b in balances {
+                    div {
+                        style: {
+                            let size = if several { 13 } else { 15 };
+                            let color = if b.balance < Decimal::ZERO { theme::NEGATIVE } else { theme::POSITIVE };
+                            format!("font-size:{size}px; color:{color}; overflow-wrap:anywhere;")
+                        },
+                        "{fmt_currency(b.balance, &b.currency)}"
+                    }
+                }
                 // The type is already the group header, so only the broker is shown here
                 if let Some(ref broker) = wallet.broker {
-                    div { style: "font-size:11px; color:#9ca3af; margin-top:1px;", "{broker}" }
-                }
-                // Balance gets its own line so long amounts never squeeze the name
-                // Smaller lines when the wallet holds several money types, so the card stays compact
-                {
-                    let balances = wallet.display_balances();
-                    let style = if balances.len() > 1 {
-                        "font-size:13px; font-weight:600; color:#1f2937; margin-top:2px; overflow-wrap:anywhere;"
-                    } else {
-                        "font-size:16px; font-weight:700; color:#1f2937; margin-top:4px; overflow-wrap:anywhere;"
-                    };
-                    rsx! {
-                        for b in balances {
-                            div { style: "{style}", "{fmt_currency(b.balance, &b.currency)}" }
-                        }
-                    }
+                    div { style: "font-size:12px; color:{theme::TEXT_MUTED}; margin-top:1px;", "{broker}" }
                 }
             }
 
             button {
-                style: "border:none; background:transparent; font-size:18px; cursor:pointer; padding:4px; flex-shrink:0;",
+                style: "border:none; background:transparent; cursor:pointer; padding:4px; flex-shrink:0; display:flex;",
                 onclick: move |e| { e.stop_propagation(); on_edit.call(e); },
-                "✏️"
+                Icon { name: IconName::Pencil, size: 18, color: theme::TEXT_MUTED.to_string() }
             }
         }
     }

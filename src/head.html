@@ -2,6 +2,8 @@
 <!-- viewport-fit=cover lets the page use the full screen and exposes env(safe-area-inset-*); overrides the default viewport tag -->
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <style>
+    /* Square buttons app-wide; overrides inline radius */
+    button, label:has(> input[type="file"]) { border-radius: 0 !important; }
     *, *::before, *::after { box-sizing: border-box; }
     html, body, #main {
         margin: 0;
@@ -11,10 +13,14 @@
         overflow: hidden;
     }
     body {
-        background: #f5f5f5;
+        background: #f7f7fc;
         font-family: "Be Vietnam Pro", system-ui, -apple-system, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji";
         overscroll-behavior: none;
         -webkit-text-size-adjust: 100%;
         -webkit-tap-highlight-color: transparent;
     }
+    /* iOS date inputs ignore width:100% and push the page wider than the screen */
+    input[type="date"] { -webkit-appearance: none; appearance: none; min-width: 0; max-width: 100%; display: block; }
+    /* Scrolling flex columns: children keep their height instead of shrinking to fit */
+    .scroll-col > * { flex-shrink: 0; }
 </style>

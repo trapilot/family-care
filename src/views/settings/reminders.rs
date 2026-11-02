@@ -8,6 +8,9 @@ use crate::models::{Bill, NewBill, Reminder, Wallet};
 use crate::repository::settings_repo::parse_hh_mm;
 use crate::repository::{BillRepo, ReminderRepo, SettingsRepo, WalletRepo};
 use crate::services::ReminderService;
+use crate::views::icons::{Icon, IconName};
+use crate::views::theme;
+use crate::views::ui::IconText;
 use crate::views::{fmt_vnd, repeat_unit_label, ts_to_date_str, AmountInput};
 
 #[component]
@@ -71,25 +74,25 @@ pub fn RemindersSettings() -> Element {
 
             // ── Interval ──
             div {
-                style: "background:#fff; border-radius:12px; padding:16px; box-shadow:0 1px 3px rgba(0,0,0,.06);",
-                h2 { style: "margin:0 0 6px; font-size:16px; font-weight:700; color:#1f2937;", {t.t("Notification frequency")} }
-                p { style: "margin:0 0 12px; font-size:13px; color:#6b7280; line-height:1.5;",
+                style: "background:#fff; border-radius:16px; padding:16px;",
+                h2 { style: "margin:0 0 6px; font-size:14px; font-weight:600; color:{theme::TEXT};", {t.t("Notification frequency")} }
+                p { style: "margin:0 0 12px; font-size:13px; color:{theme::TEXT_MUTED}; line-height:1.5;",
                     {t.t("On a day with due income, transfers or unpaid bills, notify from the first notification time, then every N hours until midnight.")}
                 }
-                div { style: "display:flex; align-items:center; gap:8px; font-size:14px; color:#374151; margin-bottom:10px;",
+                div { style: "display:flex; align-items:center; gap:8px; font-size:14px; color:{theme::TEXT}; margin-bottom:10px;",
                     {t.t("First notification at")}
                     input {
-                        style: "border:1px solid #e5e7eb; border-radius:8px; padding:8px 10px; font-size:16px; outline:none; background:#fff;",
+                        style: "{theme::INPUT} width:auto;",
                         r#type: "time",
                         value: "{start.read()}",
                         oninput: move |e| start.set(e.value()),
                         onchange: save_start,
                     }
                 }
-                div { style: "display:flex; align-items:center; gap:8px; font-size:14px; color:#374151;",
+                div { style: "display:flex; align-items:center; gap:8px; font-size:14px; color:{theme::TEXT};",
                     {t.t("Every")}
                     input {
-                        style: "width:64px; border:1px solid #e5e7eb; border-radius:8px; padding:8px 10px; font-size:16px; outline:none; background:#fff; text-align:center;",
+                        style: "{theme::INPUT} width:64px; text-align:center;",
                         r#type: "text",
                         inputmode: "numeric",
                         value: "{interval.read()}",
@@ -104,10 +107,10 @@ pub fn RemindersSettings() -> Element {
 
             // ── List ──
             div {
-                style: "background:#fff; border-radius:12px; padding:16px; box-shadow:0 1px 3px rgba(0,0,0,.06); display:flex; flex-direction:column; gap:12px;",
-                h2 { style: "margin:0; font-size:16px; font-weight:700; color:#1f2937;", {t.t("Recurring reminders")} }
+                style: "background:#fff; border-radius:16px; padding:16px; display:flex; flex-direction:column; gap:12px;",
+                h2 { style: "margin:0; font-size:14px; font-weight:600; color:{theme::TEXT};", {t.t("Recurring reminders")} }
                 if reminders.read().is_empty() {
-                    p { style: "margin:0; font-size:13px; color:#9ca3af; line-height:1.5;",
+                    p { style: "margin:0; font-size:13px; color:{theme::TEXT_MUTED}; line-height:1.5;",
                         {t.t("No reminders yet. Turn on \"Remind me when this repeats\" when adding an Income or Transfer.")}
                     }
                 }
@@ -131,19 +134,19 @@ pub fn RemindersSettings() -> Element {
                         rsx! {
                             div {
                                 key: "{reminder.id}",
-                                style: "display:flex; gap:10px; align-items:flex-start; border-top:1px solid #f3f4f6; padding-top:12px;",
+                                style: "display:flex; gap:10px; align-items:flex-start; border-top:1px solid #e6e6ef; padding-top:12px;",
                                 div { style: "flex:1; min-width:0;",
-                                    div { style: "font-size:13px; font-weight:700; color:#1f2937;", "{title}" }
-                                    div { style: "font-size:13px; color:#374151; overflow-wrap:anywhere;", "{body}" }
-                                    div { style: "font-size:12px; color:#6b7280; margin-top:2px;", "{schedule}" }
+                                    div { style: "font-size:14px; font-weight:600; color:{theme::TEXT};", IconText { text: title.clone(), size: 14 } }
+                                    div { style: "font-size:13px; color:{theme::TEXT}; overflow-wrap:anywhere;", IconText { text: body.clone(), size: 14 } }
+                                    div { style: "font-size:12px; color:{theme::TEXT_MUTED}; margin-top:2px;", "{schedule}" }
                                     if paused {
-                                        div { style: "font-size:12px; color:#f59e0b; margin-top:2px; font-weight:600;", {t.t("⏸ Paused — no notifications")} }
+                                        div { style: "font-size:12px; color:#f59e0b; margin-top:2px; font-weight:600;", IconText { text: t.t("⏸ Paused — no notifications").to_string(), size: 14, gap: 4 } }
                                     } else {
-                                        div { style: "font-size:12px; color:#6366f1; margin-top:2px;", {t.t("Next")} ": {next}" }
+                                        div { style: "font-size:12px; color:{theme::PRIMARY}; margin-top:2px;", {t.t("Next")} ": {next}" }
                                     }
                                 }
                                 button {
-                                    style: "border:none; background:#f3f4f6; color:#374151; border-radius:8px; padding:6px 10px; font-size:13px; cursor:pointer; flex-shrink:0;",
+                                    style: "border:none; background:{theme::BG}; color:{theme::TEXT}; border-radius:999px; padding:6px 12px; font-size:13px; cursor:pointer; flex-shrink:0;",
                                     onclick: move |_| {
                                         let _ = state_pause.with_conn(|conn| {
                                             ReminderRepo::set_paused(conn, &id_pause, !paused)?;
@@ -151,10 +154,14 @@ pub fn RemindersSettings() -> Element {
                                         });
                                         reload_pause();
                                     },
-                                    if paused { {t.t("▶ Resume")} } else { {t.t("⏸ Pause")} }
+                                    if paused {
+                                        IconText { text: t.t("▶ Resume").to_string(), size: 14, gap: 4 }
+                                    } else {
+                                        IconText { text: t.t("⏸ Pause").to_string(), size: 14, gap: 4 }
+                                    }
                                 }
                                 button {
-                                    style: "border:none; background:#fef2f2; color:#ef4444; border-radius:8px; padding:6px 10px; font-size:13px; cursor:pointer; flex-shrink:0;",
+                                    style: "border:none; background:{theme::NEGATIVE_SOFT}; color:{theme::DANGER}; border-radius:999px; padding:6px 12px; font-size:13px; cursor:pointer; flex-shrink:0;",
                                     onclick: move |_| {
                                         let _ = state.with_conn(|conn| {
                                             ReminderRepo::delete(conn, &id)?;
@@ -175,7 +182,7 @@ pub fn RemindersSettings() -> Element {
 
 // ─── Monthly bills ────────────────────────────────────────────────────────────
 
-const INPUT_STYLE: &str = "border:1px solid #e5e7eb; border-radius:8px; padding:8px 10px; font-size:16px; outline:none; background:#fff;";
+const INPUT_STYLE: &str = "border:1px solid #e6e6ef; border-radius:12px; padding:10px 12px; font-size:15px; outline:none; background:#fff; color:#1f2133;";
 
 /// Bills paid every month: notify from the due day, every day, until marked paid for that month
 #[component]
@@ -253,9 +260,9 @@ pub fn BillsSettings() -> Element {
 
     rsx! {
         div {
-            style: "background:#fff; border-radius:12px; padding:16px; box-shadow:0 1px 3px rgba(0,0,0,.06); display:flex; flex-direction:column; gap:12px;",
-            h2 { style: "margin:0; font-size:16px; font-weight:700; color:#1f2937;", {t.t("Monthly bills")} }
-            p { style: "margin:0; font-size:13px; color:#6b7280; line-height:1.5;",
+            style: "background:#fff; border-radius:16px; padding:16px; display:flex; flex-direction:column; gap:12px;",
+            h2 { style: "margin:0; font-size:14px; font-weight:600; color:{theme::TEXT};", {t.t("Monthly bills")} }
+            p { style: "margin:0; font-size:13px; color:{theme::TEXT_MUTED}; line-height:1.5;",
                 {t.t("From the due day, notify every day until you mark the bill paid for that month. Next month it starts again.")}
             }
 
@@ -263,12 +270,12 @@ pub fn BillsSettings() -> Element {
             div {
                 id: "bill-form",
                 style: if editing.read().is_some() {
-                    "display:flex; flex-direction:column; gap:8px; background:#eef2ff; border:1px solid #c7d2fe; border-radius:10px; padding:12px;"
+                    "display:flex; flex-direction:column; gap:8px; background:#e2e5f7; border-radius:14px; padding:12px;"
                 } else {
-                    "display:flex; flex-direction:column; gap:8px; background:#f9fafb; border-radius:10px; padding:12px;"
+                    "display:flex; flex-direction:column; gap:8px; background:#f7f7fc; border-radius:14px; padding:12px;"
                 },
                 if let Some(b) = editing.read().as_ref() {
-                    div { style: "font-size:13px; font-weight:700; color:#4338ca;", {t.t("✏️ Editing")} " {b.name}" }
+                    div { style: "font-size:13px; font-weight:600; color:#3f51b5;", IconText { text: format!("{} {}", t.t("✏️ Editing"), b.name), size: 14, gap: 4 } }
                 }
                 input {
                     style: INPUT_STYLE,
@@ -283,7 +290,7 @@ pub fn BillsSettings() -> Element {
                     placeholder: t.t("Amount (optional)").to_string(),
                     style: INPUT_STYLE.to_string(),
                 }
-                div { style: "display:flex; align-items:center; gap:8px; font-size:14px; color:#374151;",
+                div { style: "display:flex; align-items:center; gap:8px; font-size:14px; color:{theme::TEXT};",
                     {t.t("Due on day")}
                     input {
                         style: "width:64px; {INPUT_STYLE} text-align:center;",
@@ -295,18 +302,18 @@ pub fn BillsSettings() -> Element {
                     {t.t("of every month")}
                 }
                 if !error.read().is_empty() {
-                    div { style: "font-size:12px; color:#ef4444;", "{error}" }
+                    div { style: "font-size:12px; color:{theme::DANGER};", "{error}" }
                 }
                 div { style: "display:flex; gap:8px;",
                     if editing.read().is_some() {
                         button {
-                            style: "flex:1; border:1px solid #e5e7eb; background:#fff; color:#374151; border-radius:8px; padding:10px; font-size:14px; cursor:pointer;",
+                            style: "{theme::BTN_SECONDARY} flex:1;",
                             onclick: move |_| reset_form(),
                             {t.t("Cancel")}
                         }
                     }
                     button {
-                        style: "flex:2; border:none; background:#6366f1; color:#fff; border-radius:8px; padding:10px; font-size:14px; font-weight:600; cursor:pointer;",
+                        style: "{theme::BTN_PRIMARY} flex:2;",
                         onclick: save,
                         if editing.read().is_some() { {t.t("Save")} } else { {t.t("+ Add bill")} }
                     }
@@ -326,7 +333,7 @@ pub fn BillsSettings() -> Element {
                         let next = bill.next_due(today).map(|d| d.format("%d/%m/%Y").to_string()).unwrap_or_else(|| "—".into());
                         format!("{}{}: {next}", if paid_now { t.t("✓ Paid this month · ") } else { "" }, t.t("Next"))
                     };
-                    let status_color = if bill.is_paused { "#f59e0b" } else if unpaid { "#ef4444" } else { "#10b981" };
+                    let status_color = if bill.is_paused { "#f59e0b" } else if unpaid { theme::DANGER } else { theme::POSITIVE };
                     let schedule = t.t("Day {n} of every month").replace("{n}", &bill.due_day.to_string());
                     let amount_label = bill.amount.map(fmt_vnd);
                     let paused = bill.is_paused;
@@ -337,37 +344,40 @@ pub fn BillsSettings() -> Element {
                     rsx! {
                         div {
                             key: "{bill.id}",
-                            style: "display:flex; gap:8px; align-items:flex-start; border-top:1px solid #f3f4f6; padding-top:12px;",
+                            style: "display:flex; gap:8px; align-items:flex-start; border-top:1px solid #e6e6ef; padding-top:12px;",
                             div { style: "flex:1; min-width:0;",
-                                div { style: "font-size:14px; font-weight:700; color:#1f2937; overflow-wrap:anywhere;", "🧾 {bill.name}" }
-                                if let Some(a) = amount_label {
-                                    div { style: "font-size:13px; color:#374151;", "{a}" }
+                                div { style: "font-size:15px; font-weight:600; color:{theme::TEXT}; overflow-wrap:anywhere; display:flex; align-items:center; gap:6px;",
+                                    Icon { name: IconName::Receipt, size: 16 }
+                                    "{bill.name}"
                                 }
-                                div { style: "font-size:12px; color:#6b7280; margin-top:2px;", "{schedule}" }
-                                div { style: "font-size:12px; color:{status_color}; margin-top:2px; font-weight:600;", "{status}" }
+                                if let Some(a) = amount_label {
+                                    div { style: "font-size:13px; color:{theme::TEXT};", "{a}" }
+                                }
+                                div { style: "font-size:12px; color:{theme::TEXT_MUTED}; margin-top:2px;", "{schedule}" }
+                                div { style: "font-size:12px; color:{status_color}; margin-top:2px; font-weight:600;", IconText { text: status, size: 14, gap: 4 } }
                             }
                             div { style: "display:flex; flex-direction:column; gap:6px; flex-shrink:0;",
                                 if unpaid {
                                     button {
-                                        style: "border:none; background:#10b981; color:#fff; border-radius:8px; padding:6px 10px; font-size:13px; font-weight:600; cursor:pointer;",
+                                        style: "border:none; background:{theme::POSITIVE}; color:#fff; border-radius:999px; padding:6px 12px; font-size:13px; font-weight:600; cursor:pointer;",
                                         onclick: move |_| {
                                             let (id, cycle) = (id_paid.clone(), cycle.clone());
                                             update_paid(Box::new(move |conn| ReminderService::mark_bill_paid(conn, &id, &cycle)));
                                         },
-                                        {t.t("✓ Paid")}
+                                        IconText { text: t.t("✓ Paid").to_string(), size: 14, gap: 4 }
                                     }
                                 } else if paid_now {
                                     button {
-                                        style: "border:none; background:#f3f4f6; color:#374151; border-radius:8px; padding:6px 10px; font-size:13px; cursor:pointer;",
+                                        style: "border:none; background:{theme::BG}; color:{theme::TEXT}; border-radius:999px; padding:6px 12px; font-size:13px; cursor:pointer;",
                                         onclick: move |_| {
                                             let id = id_paid.clone();
                                             update_paid(Box::new(move |conn| BillRepo::set_paid_month(conn, &id, None)));
                                         },
-                                        {t.t("↩ Not paid")}
+                                        IconText { text: t.t("↩ Not paid").to_string(), size: 14, gap: 4 }
                                     }
                                 }
                                 button {
-                                    style: "border:none; background:#eef2ff; color:#4338ca; border-radius:8px; padding:6px 10px; font-size:13px; cursor:pointer;",
+                                    style: "border:none; background:{theme::PRIMARY_SOFT}; color:{theme::PRIMARY}; border-radius:999px; padding:6px 12px; font-size:13px; cursor:pointer;",
                                     onclick: move |_| {
                                         name.set(bill_edit.name.clone());
                                         amount.set(bill_edit.amount.map(|a| a.normalize().to_string()).unwrap_or_default());
@@ -380,15 +390,19 @@ pub fn BillsSettings() -> Element {
                                     {t.t("Edit")}
                                 }
                                 button {
-                                    style: "border:none; background:#f3f4f6; color:#374151; border-radius:8px; padding:6px 10px; font-size:13px; cursor:pointer;",
+                                    style: "border:none; background:{theme::BG}; color:{theme::TEXT}; border-radius:999px; padding:6px 12px; font-size:13px; cursor:pointer;",
                                     onclick: move |_| {
                                         let id = id_pause.clone();
                                         update_pause(Box::new(move |conn| BillRepo::set_paused(conn, &id, !paused)));
                                     },
-                                    if paused { {t.t("▶ Resume")} } else { {t.t("⏸ Pause")} }
+                                    if paused {
+                                        IconText { text: t.t("▶ Resume").to_string(), size: 14, gap: 4 }
+                                    } else {
+                                        IconText { text: t.t("⏸ Pause").to_string(), size: 14, gap: 4 }
+                                    }
                                 }
                                 button {
-                                    style: "border:none; background:#fef2f2; color:#ef4444; border-radius:8px; padding:6px 10px; font-size:13px; cursor:pointer;",
+                                    style: "border:none; background:{theme::NEGATIVE_SOFT}; color:{theme::DANGER}; border-radius:999px; padding:6px 12px; font-size:13px; cursor:pointer;",
                                     onclick: move |_| {
                                         let id = id_delete.clone();
                                         if editing.read().as_ref().is_some_and(|b| b.id == id) { reset_form(); }

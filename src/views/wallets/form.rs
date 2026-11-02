@@ -8,7 +8,9 @@ use crate::models::{Currency, NewTransaction, NewWallet, Wallet, WalletType};
 use crate::repository::{CurrencyRepo, WalletRepo};
 use crate::services::TransactionService;
 use super::WalletView;
-use crate::views::{currency_name, now_ts, AmountInput};
+use crate::views::icons::{icon_for_emoji, Icon, IconName};
+use crate::views::ui::{IconPicker, IconText, ScreenHeader};
+use crate::views::{currency_name, now_ts, theme, AmountInput};
 
 #[component]
 pub fn WalletForm(view: Signal<WalletView>, editing: Option<Wallet>) -> Element {
@@ -140,28 +142,31 @@ pub fn WalletForm(view: Signal<WalletView>, editing: Option<Wallet>) -> Element 
         }
     };
 
+    let (default_emoji, type_color) = match *wallet_type.read() {
+        WalletType::Cash       => ("💵", "#17a589"),
+        WalletType::Bank       => ("🏦", "#3f51b5"),
+        WalletType::Loan       => ("🤝", "#bb3baa"),
+        WalletType::EWallet    => ("📱", "#f59e0b"),
+        WalletType::Investment => ("📈", "#8b5cf6"),
+    };
+    let icon_options: Vec<&'static str> = std::iter::once(default_emoji)
+        .chain(["🏦", "💵", "📱", "💳", "📈", "🤝", "🐷", "💰"].into_iter().filter(|e| *e != default_emoji))
+        .collect();
+
     rsx! {
         div {
-            style: "padding:16px; display:flex; flex-direction:column; gap:14px;",
-
-            // ── Header ──
-            div {
-                style: "display:flex; align-items:center; gap:12px;",
-                button {
-                    style: "border:none; background:transparent; font-size:22px; cursor:pointer; padding:0;",
-                    onclick: move |_| { view.set(WalletView::List); },
-                    "←"
-                }
-                h1 { style: "margin:0; font-size:18px; font-weight:700; color:#1f2937;", "{title}" }
+            style: "display:flex; flex-direction:column; min-height:100%;",
+            ScreenHeader {
+                title: title.to_string(),
+                on_back: Some(EventHandler::new(move |_| { view.set(WalletView::List); })),
             }
+        div {
+            style: "padding:16px; display:flex; flex-direction:column; gap:16px;",
 
             // ── Type (first option = default for a new wallet) ──
             FieldLabel { label: t.t("Type") }
-            select {
-                style: "border:1px solid #e5e7eb; border-radius:8px; padding:10px 12px; font-size:16px; outline:none; background:#fff; width:100%; box-sizing:border-box;",
-                oninput: move |e| {
-                    if let Ok(wt) = e.value().parse::<WalletType>() { wallet_type.set(wt); }
-                },
+            div {
+                style: "display:flex; flex-wrap:wrap; gap:8px;",
                 for (wt, label, icon_str) in [
                     (WalletType::Bank,       t.t("Bank"),       "🏦"),
                     (WalletType::Cash,       t.t("Cash"),       "💵"),
@@ -169,10 +174,19 @@ pub fn WalletForm(view: Signal<WalletView>, editing: Option<Wallet>) -> Element 
                     (WalletType::Investment, t.t("Investment"), "📈"),
                     (WalletType::Loan,       t.t("Loan"),       "🤝"),
                 ] {
-                    option {
-                        value: "{wt}",
-                        selected: *wallet_type.read() == wt,
-                        "{icon_str} {label}"
+                    button {
+                        key: "{wt}",
+                        style: if *wallet_type.read() == wt {
+                            "{theme::CHIP_ACTIVE} display:inline-flex; align-items:center; gap:6px;"
+                        } else {
+                            "{theme::CHIP} display:inline-flex; align-items:center; gap:6px;"
+                        },
+                        onclick: {
+                            let wt = wt.clone();
+                            move |_| wallet_type.set(wt.clone())
+                        },
+                        Icon { name: icon_for_emoji(icon_str).unwrap_or(IconName::Package), size: 16 }
+                        "{label}"
                     }
                 }
             }
@@ -180,7 +194,7 @@ pub fn WalletForm(view: Signal<WalletView>, editing: Option<Wallet>) -> Element 
             // ── Name ──
             FieldLabel { label: t.t("Name") }
             input {
-                style: "border:1px solid #e5e7eb; border-radius:8px; padding:10px 12px; font-size:16px; outline:none; background:#fff;",
+                style: "{theme::INPUT}",
                 r#type: "text",
                 // Wallet names are UPPERCASE: caps keyboard on phones, and converted as you type
                 autocapitalize: "characters",
@@ -198,7 +212,7 @@ pub fn WalletForm(view: Signal<WalletView>, editing: Option<Wallet>) -> Element 
                     rsx! {
                         div {
                             style: "display:flex; flex-direction:column; gap:4px;",
-                            span { style: "font-size:12px; color:#6b7280;", "{label}" }
+                            span { style: "font-size:13px; color:{theme::TEXT_MUTED};", "{label}" }
                             AmountInput {
                                 value: amount,
                                 oninput: move |v: String| {
@@ -216,7 +230,7 @@ pub fn WalletForm(view: Signal<WalletView>, editing: Option<Wallet>) -> Element 
             if *wallet_type.read() == WalletType::Investment {
                 FieldLabel { label: t.t("Broker") }
                 input {
-                    style: "border:1px solid #e5e7eb; border-radius:8px; padding:10px 12px; font-size:14px; outline:none; background:#fff;",
+                    style: "{theme::INPUT}",
                     r#type: "text",
                     placeholder: t.t("e.g. HSBC, VPS, Binance, OKX"),
                     value: "{broker.read()}",
@@ -225,28 +239,28 @@ pub fn WalletForm(view: Signal<WalletView>, editing: Option<Wallet>) -> Element 
             }
 
             // ── Icon ──
-            FieldLabel { label: t.t("Icon (emoji, optional)") }
-            input {
-                style: "border:1px solid #e5e7eb; border-radius:8px; padding:10px 12px; font-size:22px; outline:none; background:#fff; width:60px;",
-                r#type: "text",
-                placeholder: "🏦",
-                value: "{icon.read()}",
-                oninput: move |e| {
-                    icon.set(e.value());
+            FieldLabel { label: t.t("Icon") }
+            IconPicker {
+                value: if icon.read().is_empty() { default_emoji.to_string() } else { icon.read().clone() },
+                options: icon_options.clone(),
+                color: type_color.to_string(),
+                on_select: move |e: String| {
+                    // The type's own icon is the default: store nothing for it
+                    if e == default_emoji { icon.set(String::new()); } else { icon.set(e); }
                 },
             }
 
             // ── Error ──
             if !error_msg.read().is_empty() {
                 div {
-                    style: "background:#fef2f2; border-radius:8px; padding:10px 12px; font-size:13px; color:#ef4444;",
+                    style: "background:{theme::NEGATIVE_SOFT}; border-radius:12px; padding:10px 12px; font-size:13px; color:{theme::DANGER};",
                     "{error_msg.read()}"
                 }
             }
 
             // ── Submit ──
             button {
-                style: "padding:14px; background:#6366f1; color:#fff; border:none; border-radius:12px; font-size:16px; font-weight:700; cursor:pointer; margin-top:4px;",
+                style: "{theme::BTN_PRIMARY} width:100%; margin-top:4px;",
                 onclick: submit,
                 if editing.is_some() { {t.t("Update Wallet")} } else { {t.t("Create Wallet")} }
             }
@@ -255,33 +269,33 @@ pub fn WalletForm(view: Signal<WalletView>, editing: Option<Wallet>) -> Element 
             if let Some(wallet) = editing.clone() {
                 if can_delete() {
                     button {
-                        style: "padding:12px; background:transparent; color:#ef4444; border:1px solid #ef4444; border-radius:12px; font-size:15px; font-weight:600; cursor:pointer;",
+                        style: "{theme::BTN_DANGER} width:100%;",
                         onclick: move |_| confirm_delete.set(true),
-                        {t.t("🗑 Delete wallet")}
+                        IconText { text: t.t("🗑 Delete wallet").to_string() }
                     }
                 } else {
-                    div { style: "font-size:12px; color:#9ca3af; text-align:center;",
+                    div { style: "font-size:12px; color:{theme::TEXT_MUTED}; text-align:center;",
                         {t.t("This wallet has transactions, so it can't be deleted.")}
                     }
                 }
 
                 if confirm_delete() {
                     div {
-                        style: "position:fixed; inset:0; background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; z-index:100; padding:20px;",
+                        style: "{theme::OVERLAY}",
                         div {
-                            style: "background:#fff; border-radius:16px; padding:22px; max-width:320px; width:100%;",
-                            h3 { style: "margin:0 0 8px; font-size:17px; font-weight:700;", {t.t("Delete wallet?")} }
-                            p { style: "margin:0 0 18px; font-size:14px; color:#6b7280; line-height:1.5;",
+                            style: "{theme::DIALOG}",
+                            h3 { style: "margin:0 0 8px; font-size:16px; font-weight:600; color:{theme::TEXT};", {t.t("Delete wallet?")} }
+                            p { style: "margin:0 0 18px; font-size:14px; color:{theme::TEXT_MUTED}; line-height:1.5;",
                                 {t.t("\"{name}\" will be permanently deleted.").replace("{name}", &wallet.name)}
                             }
                             div { style: "display:flex; gap:10px;",
                                 button {
-                                    style: "flex:1; padding:11px; border:1px solid #e5e7eb; border-radius:8px; background:#fff; font-size:14px; cursor:pointer;",
+                                    style: "{theme::BTN_SECONDARY} flex:1;",
                                     onclick: move |_| confirm_delete.set(false),
                                     {t.t("Cancel")}
                                 }
                                 button {
-                                    style: "flex:1; padding:11px; border:none; border-radius:8px; background:#ef4444; color:#fff; font-size:14px; font-weight:700; cursor:pointer;",
+                                    style: "{theme::BTN_DANGER} flex:1;",
                                     onclick: {
                                         let state = state.clone();
                                         let mut error_msg = error_msg.clone();
@@ -302,6 +316,7 @@ pub fn WalletForm(view: Signal<WalletView>, editing: Option<Wallet>) -> Element 
                 }
             }
         }
+        }
     }
 }
 
@@ -309,7 +324,7 @@ pub fn WalletForm(view: Signal<WalletView>, editing: Option<Wallet>) -> Element 
 fn FieldLabel(label: &'static str) -> Element {
     rsx! {
         label {
-            style: "font-size:12px; font-weight:600; color:#374151; text-transform:uppercase; letter-spacing:.5px;",
+            style: "{theme::LABEL} margin:0 0 -10px;",
             "{label}"
         }
     }

@@ -8,8 +8,11 @@ use crate::models::{
     Currency, CurrencyInfo, IncomeType, NewReminder, NewTransaction, RepeatUnit, Transaction, TransactionType,
 };
 use crate::repository::{CategoryRepo, CurrencyRepo, HoldingRepo, ReminderRepo, TxnImageRepo, WalletRepo};
-use crate::services::{ReminderService, TransactionService};
-use crate::views::{currency_name, date_str_add, date_str_to_ts, fmt_currency, now_ts, repeat_unit_label, AmountInput};
+use crate::services::statement::ocr;
+use crate::services::{receipt, ReminderService, TransactionService};
+use crate::views::icons::{Icon, IconName};
+use crate::views::ui::{txn_type_look, IconCircle, IconText, ScreenHeader};
+use crate::views::{currency_name, date_str_add, date_str_to_ts, fmt_currency, fmt_vnd, now_ts, repeat_unit_label, theme, AmountInput};
 use crate::models::id_card::jpeg_data_url;
 use crate::views::photo_picker::{use_photo_picker, PhotoInput};
 use super::TxnView;
@@ -82,9 +85,49 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
     });
     let mut photo_error = use_signal(|| false);
     let mut preview     = use_signal(|| None::<usize>);
-    use_photo_picker(move |_, jpeg| match jpeg {
-        Some(jpeg) => { photos.write().push(jpeg); photo_error.set(false); }
-        None       => photo_error.set(true),
+
+    // Amount detection from photos. `amount_auto` stays true while the amount field holds a
+    // detected value (or is untouched); typing in it turns that off. Editing never overwrites silently.
+    let mut amount_auto = use_signal(|| editing.is_none());
+    let mut detected    = use_signal(Vec::<(u64, Decimal)>::new);
+    let mut scanning    = use_signal(|| 0usize);
+
+    use_photo_picker(move |key, jpeg| match jpeg {
+        Some(jpeg) => {
+            photos.write().push(jpeg.clone());
+            photo_error.set(false);
+            // Only the Scan button reads the amount; Upload / Camera in Photos just attach
+            if key != "scan" { return; }
+            let hash = photo_hash(&jpeg);
+            scanning.set(scanning() + 1);
+            spawn(async move {
+                // Any failure (incl. unsupported device) is silent: the user just types the amount
+                if let Ok(page) = ocr::recognize_async(jpeg).await {
+                    if let Some(amount) = receipt::biggest_amount(&page) {
+                        detected.write().push((hash, amount));
+                    }
+                }
+                scanning.set(scanning().saturating_sub(1));
+            });
+        }
+        None => photo_error.set(true),
+    });
+
+    // Biggest detected amount among the photos still attached
+    let effective = use_memo(move || {
+        let hashes: Vec<u64> = photos.read().iter().map(|j| photo_hash(j)).collect();
+        detected.read().iter().filter(|(h, _)| hashes.contains(h)).map(|(_, a)| *a).max()
+    });
+
+    // Fill (or clear) the amount while it is still auto-managed
+    use_effect(move || {
+        let eff = effective();
+        if amount_auto() {
+            match eff {
+                Some(a) => amount_str.set(a.normalize().to_string()),
+                None    => amount_str.set(String::new()),
+            }
+        }
     });
 
     // ── Load reference data ──
@@ -240,24 +283,25 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
 
     let title = if editing.is_some() { t.t("Edit Transaction") } else { t.t("New Transaction") };
 
+    // Detected amount that differs from what the user has typed → offer it as a suggestion
+    let suggestion: Option<Decimal> = effective().filter(|a| {
+        !amount_auto() && Decimal::from_str(&amount_str.read()).ok() != Some(*a)
+    });
+    let auto_filled = amount_auto() && effective().is_some();
+
     rsx! {
         div {
-            style: "padding:16px; display:flex; flex-direction:column; gap:14px;",
-
-            // ── Header ──
-            div {
-                style: "display:flex; align-items:center; gap:12px;",
-                button {
-                    style: "border:none; background:transparent; font-size:22px; cursor:pointer; padding:0;",
-                    onclick: move |_| { view.set(TxnView::List); },
-                    "←"
-                }
-                h1 { style: "margin:0; font-size:18px; font-weight:700; color:#1f2937;", "{title}" }
+            style: "display:flex; flex-direction:column; min-height:100%;",
+            ScreenHeader {
+                title: title.to_string(),
+                on_back: Some(EventHandler::new(move |_| { view.set(TxnView::List); })),
             }
+        div {
+            style: "padding:16px; display:flex; flex-direction:column; gap:16px;",
 
             // ── Transaction type selector ──
             div {
-                style: "display:flex; gap:6px; flex-wrap:wrap;",
+                style: "display:flex; gap:8px; overflow-x:auto;",
                 for (tt, label) in [
                     (TransactionType::Expense,   t.t("Expense")),
                     (TransactionType::Income,    t.t("Income")),
@@ -268,16 +312,18 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
                     {
                         let tt_clone = tt.clone();
                         let is_active = *txn_type.read() == tt;
+                        let (icon, _) = txn_type_look(&tt);
                         rsx! {
                             button {
                                 style: if is_active {
-                                    "padding:6px 14px; border:none; border-radius:20px; background:#6366f1; color:#fff; font-size:12px; font-weight:600; cursor:pointer;"
+                                    "{theme::CHIP_ACTIVE} display:inline-flex; align-items:center; gap:6px;"
                                 } else {
-                                    "padding:6px 14px; border:1px solid #e5e7eb; border-radius:20px; background:#fff; color:#6b7280; font-size:12px; cursor:pointer;"
+                                    "{theme::CHIP} display:inline-flex; align-items:center; gap:6px;"
                                 },
                                 onclick: move |_| {
                                     txn_type.set(tt_clone.clone());
                                 },
+                                Icon { name: icon, size: 16 }
                                 "{label}"
                             }
                         }
@@ -287,21 +333,54 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
 
             // ── Wallet ──
             FieldLabel { label: t.t("From Wallet") }
-            SelectField {
-                value: wallet_id.read().clone(),
-                onchange: move |v: String| { wallet_id.set(v); },
-                placeholder: t.t("Select wallet"),
-                options: wallets.read().iter().map(|w| (w.id.clone(), w.name.clone())).collect()
+            div { style: "display:flex; gap:8px; align-items:stretch;",
+                div { style: "flex:1; min-width:0;",
+                    SelectField {
+                        value: wallet_id.read().clone(),
+                        onchange: move |v: String| { wallet_id.set(v); },
+                        placeholder: t.t("Select wallet"),
+                        options: wallets.read().iter().map(|w| (w.id.clone(), w.name.clone())).collect()
+                    }
+                }
+                // Camera-only scan: the photo is attached and its amount is detected
+                label {
+                    style: "width:44px; flex-shrink:0; display:flex; align-items:center; justify-content:center; background:{theme::PRIMARY_SOFT}; cursor:pointer;",
+                    aria_label: t.t("Scan"),
+                    Icon { name: IconName::Camera, size: 20, color: theme::PRIMARY.to_string() }
+                    PhotoInput { key_name: "scan", camera: true }
+                }
             }
 
             // ── Category (expense) — above the amount ──
             if *txn_type.read() == TransactionType::Expense {
                 FieldLabel { label: t.t("Category") }
-                SelectField {
-                    value: category_id.read().clone(),
-                    onchange: move |v| { category_id.set(v); },
-                    placeholder: t.t("Select category"),
-                    options: categories.read().iter().map(|c| (c.id.clone(), format!("{} {}", c.icon.as_deref().unwrap_or(""), t.tr(&c.name)))).collect()
+                div {
+                    style: "display:grid; grid-template-columns:repeat(4, 1fr); gap:12px 8px;",
+                    for c in categories.read().iter() {
+                        {
+                            let cid = c.id.clone();
+                            let selected = *category_id.read() == c.id;
+                            let ring = if selected { "box-shadow:0 0 0 2px #3f51b5;" } else { "" };
+                            let color = c.color.clone().unwrap_or_else(|| theme::TEXT_MUTED.to_string());
+                            let name = t.tr(&c.name).to_string();
+                            let name_color = if selected { theme::PRIMARY } else { theme::TEXT };
+                            rsx! {
+                                button {
+                                    key: "{c.id}",
+                                    style: "display:flex; flex-direction:column; align-items:center; gap:6px; border:none; background:transparent; padding:0; cursor:pointer; min-width:0;",
+                                    onclick: move |_| { category_id.set(cid.clone()); },
+                                    span {
+                                        style: "display:inline-flex; border-radius:50%; {ring}",
+                                        IconCircle { icon: c.icon.clone(), fallback: IconName::Tag, color, size: 48 }
+                                    }
+                                    span {
+                                        style: "font-size:12px; color:{name_color}; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;",
+                                        "{name}"
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -378,7 +457,7 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
             // ── Date ──
             FieldLabel { label: t.t("Date") }
             input {
-                style: "border:1px solid #e5e7eb; border-radius:8px; padding:10px 12px; font-size:14px; outline:none; background:#fff;",
+                style: "{theme::INPUT}",
                 r#type: "date",
                 value: "{txn_date.read()}",
                 oninput: move |e| { txn_date.set(e.value()); },
@@ -390,7 +469,7 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
                 style: "display:flex; gap:8px;",
                 AmountInput {
                     value: amount_str.read().clone(),
-                    oninput: move |v| amount_str.set(v),
+                    oninput: move |v| { amount_auto.set(false); amount_str.set(v); },
                     style: AMOUNT_WITH_CURRENCY_STYLE.to_string(),
                 }
                 CurrencySelect {
@@ -400,11 +479,47 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
                     onchange: move |c: Currency| { to_currency.set(c.clone()); currency.set(c); },
                 }
             }
+            // Scan status
+            if scanning() > 0 {
+                div {
+                    style: "display:flex; align-items:center; gap:6px; font-size:12px; color:{theme::TEXT_MUTED};",
+                    Icon { name: IconName::Clock, size: 14 }
+                    {t.t("Reading amount from photo…")}
+                }
+            } else if let Some(a) = suggestion {
+                {
+                    let detected_label = t.t("Detected {amount}").replace("{amount}", &fmt_vnd(a));
+                    rsx! {
+                        div {
+                            style: "display:flex; align-items:center; gap:6px; font-size:12px;",
+                            span {
+                                style: "display:inline-flex; align-items:center; gap:6px; background:{theme::PRIMARY_SOFT}; color:{theme::PRIMARY}; border-radius:999px; padding:4px 6px 4px 10px; font-weight:600;",
+                                Icon { name: IconName::Sparkles, size: 14 }
+                                "{detected_label}"
+                                button {
+                                    style: "border:none; border-radius:999px; background:{theme::PRIMARY}; color:#fff; font-size:12px; font-weight:600; padding:3px 10px; cursor:pointer;",
+                                    onclick: move |_| {
+                                        amount_str.set(a.normalize().to_string());
+                                        amount_auto.set(true);
+                                    },
+                                    {t.t("Use")}
+                                }
+                            }
+                        }
+                    }
+                }
+            } else if auto_filled {
+                div {
+                    style: "display:flex; align-items:center; gap:6px; font-size:12px; color:{theme::TEXT_MUTED};",
+                    Icon { name: IconName::Sparkles, size: 14 }
+                    {t.t("Filled from photo")}
+                }
+            }
             // Available balance of the chosen wallet in the chosen money type
             if matches!(*txn_type.read(), TransactionType::Expense | TransactionType::Transfer | TransactionType::InvestBuy) {
                 if let Some(w) = wallets.read().iter().find(|w| w.id == *wallet_id.read()) {
                     div {
-                        style: "font-size:12px; color:#6b7280;",
+                        style: "font-size:12px; color:{theme::TEXT_MUTED};",
                         "{t.t(\"Available\")}: {fmt_currency(w.balance(&currency()), &currency())}"
                     }
                 }
@@ -413,7 +528,7 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
             // ── Note ──
             FieldLabel { label: t.t("Note (optional)") }
             input {
-                style: "border:1px solid #e5e7eb; border-radius:8px; padding:10px 12px; font-size:14px; outline:none; background:#fff;",
+                style: "{theme::INPUT}",
                 r#type: "text",
                 placeholder: t.t("Add a note…"),
                 value: "{note.read()}",
@@ -424,18 +539,18 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
             FieldLabel { label: t.t("Photos (optional)") }
             div { style: "display:flex; gap:8px;",
                 label {
-                    style: "flex:1; padding:10px; border:1px dashed #c7d2fe; border-radius:8px; background:#fff; color:#4f46e5; font-size:14px; font-weight:600; text-align:center; cursor:pointer;",
-                    {t.t("🖼 Upload")}
+                    style: "flex:1; padding:12px; border:1px dashed #3f51b5; border-radius:12px; background:#e2e5f7; color:#3f51b5; font-size:14px; font-weight:600; text-align:center; cursor:pointer; display:flex; align-items:center; justify-content:center;",
+                    IconText { text: t.t("🖼 Upload").to_string() }
                     PhotoInput { key_name: "txn", multiple: true }
                 }
                 label {
-                    style: "flex:1; padding:10px; border:1px dashed #c7d2fe; border-radius:8px; background:#fff; color:#4f46e5; font-size:14px; font-weight:600; text-align:center; cursor:pointer;",
-                    {t.t("📷 Camera")}
+                    style: "flex:1; padding:12px; border:1px dashed #3f51b5; border-radius:12px; background:#e2e5f7; color:#3f51b5; font-size:14px; font-weight:600; text-align:center; cursor:pointer; display:flex; align-items:center; justify-content:center;",
+                    IconText { text: t.t("📷 Camera").to_string() }
                     PhotoInput { key_name: "txn", camera: true }
                 }
             }
             if photo_error() {
-                div { style: "font-size:12px; color:#ef4444;", {t.t("❌ Could not read that photo")} }
+                div { style: "font-size:12px; color:{theme::DANGER};", IconText { text: t.t("❌ Could not read that photo").to_string(), size: 14, gap: 4 } }
             }
             if !photos.read().is_empty() {
                 div { style: "display:flex; flex-wrap:wrap; gap:8px;",
@@ -443,13 +558,13 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
                         div { key: "{i}", style: "position:relative; width:76px; height:76px;",
                             img {
                                 src,
-                                style: "width:100%; height:100%; object-fit:cover; border-radius:8px; border:1px solid #e5e7eb; cursor:pointer;",
+                                style: "width:100%; height:100%; object-fit:cover; border-radius:12px; border:1px solid #e6e6ef; cursor:pointer;",
                                 onclick: move |_| preview.set(Some(i)),
                             }
                             button {
-                                style: "position:absolute; top:-6px; right:-6px; width:22px; height:22px; border-radius:50%; border:none; background:#ef4444; color:#fff; font-size:12px; line-height:22px; padding:0; cursor:pointer;",
+                                style: "position:absolute; top:-6px; right:-6px; width:22px; height:22px; border-radius:50%; border:none; background:#c0262d; color:#fff; padding:0; cursor:pointer; display:flex; align-items:center; justify-content:center;",
                                 onclick: move |_| { photos.write().remove(i); },
-                                "✕"
+                                Icon { name: IconName::X, size: 12, color: "#ffffff".to_string() }
                             }
                         }
                     }
@@ -467,9 +582,9 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
             // ── Recurring reminder (new Income / Transfer) ──
             if editing.is_none() && matches!(*txn_type.read(), TransactionType::Income | TransactionType::Transfer) {
                 div {
-                    style: "background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:10px;",
+                    style: "{theme::CARD} display:flex; flex-direction:column; gap:12px;",
                     label {
-                        style: "display:flex; align-items:center; gap:10px; font-size:14px; font-weight:600; color:#374151;",
+                        style: "display:flex; align-items:center; gap:10px; font-size:14px; font-weight:600; color:{theme::TEXT};",
                         input {
                             r#type: "checkbox",
                             style: "width:18px; height:18px;",
@@ -483,12 +598,12 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
                                 }
                             },
                         }
-                        {t.t("🔔 Remind me when this repeats")}
+                        IconText { text: t.t("🔔 Remind me when this repeats").to_string() }
                     }
                     if remind() {
                         FieldLabel { label: t.t("First reminder date") }
                         input {
-                            style: "border:1px solid #e5e7eb; border-radius:8px; padding:10px 12px; font-size:14px; outline:none; background:#fff;",
+                            style: "{theme::INPUT}",
                             r#type: "date",
                             value: "{remind_start.read()}",
                             oninput: move |e| { remind_start.set(e.value()); },
@@ -496,14 +611,14 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
                         FieldLabel { label: t.t("Repeat every") }
                         div { style: "display:flex; gap:8px;",
                             input {
-                                style: "width:72px; border:1px solid #e5e7eb; border-radius:8px; padding:10px 12px; font-size:16px; outline:none; background:#fff;",
+                                style: "{theme::INPUT} width:72px;",
                                 r#type: "text",
                                 inputmode: "numeric",
                                 value: "{remind_every.read()}",
                                 oninput: move |e| { remind_every.set(e.value().chars().filter(|c| c.is_ascii_digit()).take(3).collect()); },
                             }
                             select {
-                                style: "flex:1; border:1px solid #e5e7eb; border-radius:8px; padding:10px 12px; font-size:14px; outline:none; background:#fff;",
+                                style: "{theme::INPUT} flex:1; width:auto;",
                                 onchange: move |e| {
                                     if let Ok(unit) = e.value().parse::<RepeatUnit>() { remind_unit.set(unit); }
                                 },
@@ -512,7 +627,7 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
                                 }
                             }
                         }
-                        p { style: "margin:0; font-size:12px; color:#6b7280; line-height:1.4;",
+                        p { style: "margin:0; font-size:12px; color:{theme::TEXT_MUTED}; line-height:1.4;",
                             {t.t("On each due day you'll get notifications from the first notification time, then every few hours (Settings → Reminders). Tap \"Done for today\" to stop them. Nothing is added automatically.")}
                         }
                     }
@@ -522,35 +637,44 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
             // ── Error ──
             if !error_msg.read().is_empty() {
                 div {
-                    style: "background:#fef2f2; border-radius:8px; padding:10px 12px; font-size:13px; color:#ef4444;",
+                    style: "background:{theme::NEGATIVE_SOFT}; border-radius:12px; padding:10px 12px; font-size:13px; color:{theme::DANGER};",
                     "{error_msg.read()}"
                 }
             }
 
             // ── Submit ──
             button {
-                style: "padding:14px; background:#6366f1; color:#fff; border:none; border-radius:12px; font-size:16px; font-weight:700; cursor:pointer; margin-top:4px;",
+                style: "{theme::BTN_PRIMARY} width:100%; margin-top:4px;",
                 onclick: submit,
                 if editing.is_some() { {t.t("Update Transaction")} } else { {t.t("Add Transaction")} }
             }
+        }
         }
     }
 }
 
 // ─── Shared small components ─────────────────────────────────────────────────
 
+/// Hash of a photo's bytes, used to tie a detected amount to the photo it came from
+fn photo_hash(jpeg: &[u8]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    jpeg.hash(&mut h);
+    h.finish()
+}
+
 #[component]
 fn FieldLabel(label: &'static str) -> Element {
     rsx! {
         label {
-            style: "font-size:12px; font-weight:600; color:#374151; text-transform:uppercase; letter-spacing:.5px;",
+            style: "{theme::LABEL} margin:0 0 -10px;",
             "{label}"
         }
     }
 }
 
 /// Amount input sharing its row with a `CurrencySelect`
-const AMOUNT_WITH_CURRENCY_STYLE: &str = "flex:1; min-width:0; border:1px solid #e5e7eb; border-radius:8px; padding:10px 12px; font-size:16px; outline:none; background:#fff;";
+const AMOUNT_WITH_CURRENCY_STYLE: &str = "flex:1; min-width:0; box-sizing:border-box; border:1px solid #e6e6ef; border-radius:12px; padding:12px 14px; font-size:15px; outline:none; background:#fff; color:#1f2133;";
 
 /// Active money types with their display names; `selected` is appended when it is hidden,
 /// so an old transaction in a hidden type still shows its type
@@ -570,7 +694,7 @@ fn currency_options(t: &crate::i18n::I18n, list: &[CurrencyInfo], selected: &Cur
 fn CurrencySelect(value: Currency, options: Vec<(Currency, String)>, onchange: EventHandler<Currency>) -> Element {
     rsx! {
         select {
-            style: "flex-shrink:0; width:120px; border:1px solid #e5e7eb; border-radius:8px; padding:10px 8px; font-size:14px; font-weight:600; outline:none; background:#fff; color:#374151;",
+            style: "flex-shrink:0; width:120px; box-sizing:border-box; border:1px solid #e6e6ef; border-radius:12px; padding:12px 8px; font-size:14px; font-weight:600; outline:none; background:#fff; color:#1f2133;",
             onchange: move |e| {
                 if let Ok(c) = e.value().parse::<Currency>() { onchange.call(c); }
             },
@@ -590,7 +714,7 @@ fn SelectField(
 ) -> Element {
     rsx! {
         select {
-            style: "border:1px solid #e5e7eb; border-radius:8px; padding:10px 12px; font-size:14px; outline:none; background:#fff; width:100%; appearance:none;",
+            style: "{theme::INPUT} appearance:none;",
             value: "{value}",
             onchange: move |e| { onchange.call(e.value()); },
             option { value: "", disabled: true, selected: value.is_empty(), "{placeholder}" }

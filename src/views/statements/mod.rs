@@ -8,7 +8,9 @@ use crate::models::{CounterpartyAccount, Statement, StatementTxn};
 use crate::services::statement::{ocr, store, Bank};
 use crate::services::StatementService;
 use crate::views::photo_picker::{use_photo_picker, PhotoInput};
-use crate::views::{fmt_vnd, now_ts};
+use crate::views::icons::{emoji_icon, Icon, IconName};
+use crate::views::ui::{IconText, ScreenHeader, UnderlineTabs};
+use crate::views::{fmt_vnd, now_ts, theme};
 
 #[derive(Clone, PartialEq)]
 enum StatementsTab { Accounts, Transactions, Photos }
@@ -105,36 +107,43 @@ pub fn Statements() -> Element {
             .replace("{done}", &(done() + 1).to_string())
             .replace("{total}", &total().to_string())
     });
-    let photo_btn = "padding:8px 12px; border-radius:8px; background:#6366f1; color:#fff; font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap;";
+    let photo_btn = "width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#1f2133;";
+    let tab_defs = [StatementsTab::Accounts, StatementsTab::Transactions, StatementsTab::Photos];
+    let tab_items: Vec<(String, Option<IconName>)> = tab_labels.iter().map(|(_, l)| (l.clone(), None)).collect();
+    let active_tab = tab_defs.iter().position(|k| *k == *tab.read()).unwrap_or(0);
+    let gallery_label = emoji_icon(t.t("📷 Add photos")).map_or("", |(_, rest)| rest).to_string();
+
+    let camera_label = emoji_icon(t.t("📷 Camera")).map_or("", |(_, rest)| rest).to_string();
 
     rsx! {
         div {
-            style: "display:flex; flex-direction:column; height:100%;",
+            style: "display:flex; flex-direction:column; height:100%; background:{theme::BG};",
 
             // ── Header ──
-            div {
-                style: "padding:16px 16px 0; background:#fff;",
-                div {
-                    style: "display:flex; align-items:center; justify-content:space-between; gap:12px; margin:0 0 12px;",
-                    h1 { style: "margin:0; font-size:20px; font-weight:700; color:#1f2937;", {t.t("Statements")} }
-                    div { style: "display:flex; gap:8px;",
-                        label {
-                            style: "{photo_btn}",
-                            {t.t("📷 Add photos")}
-                            PhotoInput { key_name: "statement", multiple: true, max_size: 3000 }
-                        }
-                        label {
-                            style: "{photo_btn}",
-                            "📸"
-                            PhotoInput { key_name: "statement", camera: true, max_size: 3000 }
-                        }
+            ScreenHeader {
+                title: t.t("Statements"),
+                action: rsx! {
+                    label {
+                        style: "{photo_btn}",
+                        aria_label: "{gallery_label}",
+                        Icon { name: IconName::Image, size: 26, color: theme::TEXT.to_string() }
+                        PhotoInput { key_name: "statement", multiple: true, max_size: 3000 }
                     }
-                }
+                    label {
+                        style: "{photo_btn}",
+                        aria_label: "{camera_label}",
+                        Icon { name: IconName::Camera, size: 26, color: theme::TEXT.to_string() }
+                        PhotoInput { key_name: "statement", camera: true, max_size: 3000 }
+                    }
+                },
+            }
+            div {
+                style: "padding:12px 16px; background:{theme::HEADER_BG};",
                 label {
-                    style: "display:flex; align-items:center; gap:8px; margin:0 0 12px; font-size:13px; color:#6b7280;",
+                    style: "display:flex; align-items:center; gap:10px; font-size:13px; font-weight:600; color:{theme::TEXT_MUTED};",
                     {t.t("Bank")}
                     select {
-                        style: "flex:1; border:1px solid #e5e7eb; border-radius:8px; padding:6px 8px; font-size:14px; background:#fff; color:#1f2937;",
+                        style: "{theme::INPUT} flex:1; width:auto; padding:8px 12px; font-size:14px;",
                         aria_label: t.t("Bank"),
                         value: bank().code(),
                         onchange: move |e| bank.set(Bank::from_code(&e.value())),
@@ -143,37 +152,26 @@ pub fn Statements() -> Element {
                         }
                     }
                 }
-                div {
-                    style: "display:flex; border-bottom:1px solid #f3f4f6;",
-                    for (tab_kind, label) in tab_labels {
-                        {
-                            let is_active = *tab.read() == tab_kind;
-                            let target = tab_kind.clone();
-                            rsx! {
-                                button {
-                                    style: if is_active {
-                                        "flex:1; padding:10px 0; border:none; border-bottom:2px solid #6366f1; background:#fff; font-size:13px; font-weight:600; color:#6366f1; cursor:pointer;"
-                                    } else {
-                                        "flex:1; padding:10px 0; border:none; border-bottom:2px solid transparent; background:#fff; font-size:13px; color:#9ca3af; cursor:pointer;"
-                                    },
-                                    onclick: move |_| { tab.set(target.clone()); },
-                                    "{label}"
-                                }
-                            }
-                        }
-                    }
-                }
+            }
+            UnderlineTabs {
+                tabs: tab_items,
+                active: active_tab,
+                on_select: move |i: usize| { tab.set(tab_defs[i].clone()); },
             }
 
             div {
-                style: "flex:1; overflow-y:auto; padding:16px;",
+                class: "scroll-col",
+                style: "flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:12px;",
 
                 if let Some(s) = status {
-                    div { style: "margin-bottom:12px; padding:10px 12px; border-radius:8px; background:#eef2ff; color:#4f46e5; font-size:13px;", "⏳ {s}" }
+                    div { style: "padding:12px 14px; border-radius:12px; background:{theme::PRIMARY_SOFT}; color:{theme::PRIMARY}; font-size:13px; display:flex; align-items:center; gap:8px;",
+                        Icon { name: IconName::Clock, size: 16 }
+                        "{s}"
+                    }
                 }
                 if !errors.read().is_empty() {
                     div {
-                        style: "margin-bottom:12px; padding:10px 12px; border-radius:8px; background:#fef2f2; color:#b91c1c; font-size:13px; display:flex; gap:8px; align-items:flex-start;",
+                        style: "padding:12px 14px; border-radius:12px; background:{theme::NEGATIVE_SOFT}; color:{theme::DANGER}; font-size:13px; display:flex; gap:8px; align-items:flex-start;",
                         div { style: "flex:1;",
                             for (n, msg) in errors.read().iter() {
                                 div {
@@ -182,15 +180,15 @@ pub fn Statements() -> Element {
                             }
                         }
                         button {
-                            style: "border:none; background:transparent; color:#b91c1c; font-size:16px; cursor:pointer; line-height:1;",
+                            style: "border:none; background:transparent; color:{theme::DANGER}; cursor:pointer; padding:0; display:flex;",
                             aria_label: t.t("Dismiss"),
                             onclick: move |_| errors.write().clear(),
-                            "✕"
+                            Icon { name: IconName::X, size: 16, color: theme::DANGER.to_string() }
                         }
                     }
                 }
                 if let Some(e) = load_error {
-                    div { style: "margin-bottom:12px; color:#b91c1c; font-size:13px;", "{t.tr(&e)}" }
+                    div { style: "color:{theme::DANGER}; font-size:13px;", "{t.tr(&e)}" }
                 }
 
                 match tab.read().clone() {
@@ -221,7 +219,7 @@ fn AccountsTab(statements: Vec<Statement>, mut selected: Signal<Vec<String>>) ->
 
     if all.is_empty() {
         return rsx! {
-            div { style: "text-align:center; color:#9ca3af; padding:40px 0; font-size:14px;", {t.t("Add statement photos to see accounts")} }
+            div { style: "text-align:center; color:{theme::TEXT_MUTED}; padding:40px 0; font-size:14px;", {t.t("Add statement photos to see accounts")} }
         };
     }
 
@@ -239,7 +237,7 @@ fn AccountsTab(statements: Vec<Statement>, mut selected: Signal<Vec<String>>) ->
 
     rsx! {
         input {
-            style: "width:100%; box-sizing:border-box; border:1px solid #e5e7eb; border-radius:8px; padding:10px 12px; font-size:16px; outline:none; background:#fff; margin-bottom:10px;",
+            style: "{theme::INPUT} margin-bottom:10px;",
             r#type: "text",
             placeholder: t.t("Search name, account or bank…"),
             value: "{search}",
@@ -247,7 +245,7 @@ fn AccountsTab(statements: Vec<Statement>, mut selected: Signal<Vec<String>>) ->
         }
         div { style: "display:flex; gap:8px; margin-bottom:10px;",
             button {
-                style: "flex:1; padding:8px; border:1px solid #e5e7eb; border-radius:8px; background:#fff; font-size:13px; cursor:pointer;",
+                style: "{theme::CHIP} flex:1;",
                 onclick: move |_| {
                     let mut sel = selected.write();
                     for k in &shown_keys {
@@ -257,13 +255,13 @@ fn AccountsTab(statements: Vec<Statement>, mut selected: Signal<Vec<String>>) ->
                 {t.t("Select all shown")}
             }
             button {
-                style: "flex:1; padding:8px; border:1px solid #e5e7eb; border-radius:8px; background:#fff; font-size:13px; cursor:pointer;",
+                style: "{theme::CHIP} flex:1;",
                 onclick: move |_| selected.write().clear(),
                 {t.t("Clear selection")}
             }
         }
         div {
-            style: "background:#fff; border-radius:12px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,.06);",
+            style: "background:#fff; border-radius:16px; overflow:hidden;",
             for a in shown {
                 {
                     let is_sel = selected.read().contains(&a.key);
@@ -274,24 +272,35 @@ fn AccountsTab(statements: Vec<Statement>, mut selected: Signal<Vec<String>>) ->
                     rsx! {
                         div {
                             key: "{a.key}",
-                            style: "display:flex; align-items:center; gap:10px; padding:12px; border-bottom:1px solid #f3f4f6; cursor:pointer;",
+                            style: "display:flex; align-items:center; gap:10px; padding:12px 16px; {theme::ROW_DIVIDER} cursor:pointer;",
                             onclick: move |_| {
                                 let mut sel = selected.write();
                                 if let Some(i) = sel.iter().position(|k| *k == key) { sel.remove(i); } else { sel.push(key.clone()); }
                             },
-                            span { style: "font-size:20px; flex-shrink:0;", if is_sel { "☑️" } else { "⬜" } }
+                            // Checkbox drawn with the theme instead of ☑️ / ⬜ emoji
+                            span {
+                                style: if is_sel { "width:22px; height:22px; border-radius:7px; flex-shrink:0; display:flex; align-items:center; justify-content:center; background:#3f51b5; border:2px solid #3f51b5;" }
+                                       else { "width:22px; height:22px; border-radius:7px; flex-shrink:0; display:flex; align-items:center; justify-content:center; background:#fff; border:2px solid #c9cbe0;" },
+                                if is_sel { Icon { name: IconName::Check, size: 14, color: "#ffffff".to_string() } }
+                            }
                             div { style: "flex:1; min-width:0;",
-                                div { style: "font-size:14px; font-weight:700; color:#1f2937; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;", "{name}" }
-                                div { style: "font-size:12px; color:#9ca3af; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;", "{sub}" }
+                                div { style: "font-size:14px; font-weight:600; color:{theme::TEXT}; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;", "{name}" }
+                                div { style: "font-size:12px; color:{theme::TEXT_MUTED}; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;", "{sub}" }
                             }
                             div { style: "text-align:right; font-size:12px; flex-shrink:0;",
                                 if a.sent > Decimal::ZERO {
-                                    div { style: "color:#ef4444; font-weight:600;", "↑ {fmt_vnd(a.sent)}" }
+                                    div { style: "color:{theme::NEGATIVE}; font-weight:600; display:inline-flex; align-items:center; gap:2px; justify-content:flex-end; width:100%;",
+                                        Icon { name: IconName::ArrowUp, size: 12 }
+                                        "{fmt_vnd(a.sent)}"
+                                    }
                                 }
                                 if a.received > Decimal::ZERO {
-                                    div { style: "color:#10b981; font-weight:600;", "↓ {fmt_vnd(a.received)}" }
+                                    div { style: "color:{theme::POSITIVE}; font-weight:600; display:inline-flex; align-items:center; gap:2px; justify-content:flex-end; width:100%;",
+                                        Icon { name: IconName::ArrowDown, size: 12 }
+                                        "{fmt_vnd(a.received)}"
+                                    }
                                 }
-                                div { style: "color:#9ca3af;",
+                                div { style: "color:{theme::TEXT_MUTED};",
                                     {t.t("{n} txns").replace("{n}", &a.count.to_string())}
                                     if let Some(d) = a.last_date { " · {d.format(\"%d/%m/%Y\")}" }
                                 }
@@ -317,38 +326,38 @@ fn TransactionsTab(statements: Vec<Statement>, selected: Signal<Vec<String>>) ->
     let sent: Decimal = txns.iter().map(|(_, x)| x.debit).sum();
     let received: Decimal = txns.iter().map(|(_, x)| x.credit).sum();
     let net = received - sent;
-    let net_color = if net < Decimal::ZERO { "#ef4444" } else { "#10b981" };
+    let net_color = if net < Decimal::ZERO { theme::NEGATIVE } else { theme::POSITIVE };
 
     rsx! {
         input {
-            style: "width:100%; box-sizing:border-box; border:1px solid #e5e7eb; border-radius:8px; padding:10px 12px; font-size:16px; outline:none; background:#fff; margin-bottom:10px;",
+            style: "{theme::INPUT} margin-bottom:10px;",
             r#type: "text",
             placeholder: t.t("Search transfer content…"),
             value: "{search}",
             oninput: move |e| search.set(e.value()),
         }
         if show_hint {
-            div { style: "text-align:center; color:#9ca3af; padding:40px 0; font-size:14px;", {t.t("Select accounts in the Accounts tab")} }
+            div { style: "text-align:center; color:{theme::TEXT_MUTED}; padding:40px 0; font-size:14px;", {t.t("Select accounts in the Accounts tab")} }
         } else if txns.is_empty() {
-            div { style: "text-align:center; color:#9ca3af; padding:40px 0; font-size:14px;", {t.t("No matching transactions")} }
+            div { style: "text-align:center; color:{theme::TEXT_MUTED}; padding:40px 0; font-size:14px;", {t.t("No matching transactions")} }
         } else {
             div {
-                style: "display:flex; gap:8px; background:#fff; border-radius:12px; padding:12px; margin-bottom:12px; box-shadow:0 1px 3px rgba(0,0,0,.06);",
+                style: "display:flex; gap:8px; {theme::CARD} margin-bottom:12px;",
                 div { style: "flex:1;",
-                    div { style: "font-size:12px; color:#9ca3af;", {t.t("Sent")} }
-                    div { style: "font-size:14px; font-weight:700; color:#ef4444;", "{fmt_vnd(sent)}" }
+                    div { style: "font-size:12px; color:{theme::TEXT_MUTED};", {t.t("Sent")} }
+                    div { style: "font-size:14px; font-weight:700; color:{theme::NEGATIVE};", "{fmt_vnd(sent)}" }
                 }
                 div { style: "flex:1;",
-                    div { style: "font-size:12px; color:#9ca3af;", {t.t("Received")} }
-                    div { style: "font-size:14px; font-weight:700; color:#10b981;", "{fmt_vnd(received)}" }
+                    div { style: "font-size:12px; color:{theme::TEXT_MUTED};", {t.t("Received")} }
+                    div { style: "font-size:14px; font-weight:700; color:{theme::POSITIVE};", "{fmt_vnd(received)}" }
                 }
                 div { style: "flex:1;",
-                    div { style: "font-size:12px; color:#9ca3af;", {t.t("Net")} }
+                    div { style: "font-size:12px; color:{theme::TEXT_MUTED};", {t.t("Net")} }
                     div { style: "font-size:14px; font-weight:700; color:{net_color};", "{fmt_vnd(net)}" }
                 }
             }
             div {
-                style: "background:#fff; border-radius:12px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,.06);",
+                style: "background:#fff; border-radius:16px; overflow:hidden;",
                 for (i, (own, txn)) in txns.into_iter().enumerate() {
                     TxnRow { key: "{i}", own, txn }
                 }
@@ -361,7 +370,7 @@ fn TransactionsTab(statements: Vec<Statement>, selected: Signal<Vec<String>>) ->
 fn TxnRow(own: Option<String>, txn: StatementTxn) -> Element {
     let t = use_i18n();
     let signed = txn.signed_amount();
-    let (sign, color) = if signed < Decimal::ZERO { ("−", "#ef4444") } else { ("+", "#10b981") };
+    let (sign, color) = if signed < Decimal::ZERO { ("−", theme::NEGATIVE) } else { ("+", theme::POSITIVE) };
     let date = txn.date.map(|d| d.format("%d/%m/%Y").to_string()).unwrap_or_else(|| "—".into());
     let who = [txn.counterparty_name.clone(), txn.counterparty_account.clone()]
         .into_iter()
@@ -372,24 +381,27 @@ fn TxnRow(own: Option<String>, txn: StatementTxn) -> Element {
 
     rsx! {
         div {
-            style: "display:flex; gap:10px; padding:12px; border-bottom:1px solid #f3f4f6;",
+            style: "display:flex; gap:10px; padding:12px 16px; {theme::ROW_DIVIDER}",
             div { style: "flex:1; min-width:0;",
-                div { style: "font-size:12px; color:#6b7280;", "{date}" }
-                div { style: "font-size:14px; font-weight:600; color:#1f2937; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;", "{who}" }
+                div { style: "font-size:12px; color:{theme::TEXT_MUTED};", "{date}" }
+                div { style: "font-size:14px; font-weight:600; color:{theme::TEXT}; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;", "{who}" }
                 if !txn.details.is_empty() {
                     div {
-                        style: "font-size:12px; color:#6b7280; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;",
+                        style: "font-size:12px; color:{theme::TEXT_MUTED}; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;",
                         "{txn.details}"
                     }
                 }
                 if txn.needs_review {
-                    span { style: "display:inline-block; margin-top:4px; padding:2px 6px; border-radius:6px; background:#fef3c7; color:#b45309; font-size:11px; font-weight:600;", "⚠️ {t.t(\"Check\")}" }
+                    span { style: "display:inline-block; margin-top:4px; padding:2px 6px; border-radius:6px; background:#fef3c7; color:#b45309; font-size:11px; font-weight:600; display:inline-flex; align-items:center; gap:4px;",
+                        Icon { name: IconName::AlertTriangle, size: 12 }
+                        {t.t("Check")}
+                    }
                 }
             }
             div { style: "text-align:right; flex-shrink:0;",
                 div { style: "font-size:14px; font-weight:700; color:{color};", "{sign}{fmt_vnd(signed.abs())}" }
                 if let Some(own) = own {
-                    div { style: "font-size:11px; color:#9ca3af;", "{own}" }
+                    div { style: "font-size:11px; color:{theme::TEXT_MUTED};", "{own}" }
                 }
             }
         }
@@ -407,12 +419,13 @@ fn PhotosTab(statements: Vec<Statement>, mut version: Signal<u32>, busy: bool, o
 
     if statements.is_empty() {
         return rsx! {
-            div { style: "text-align:center; color:#9ca3af; padding:40px 0; font-size:14px;", {t.t("Add statement photos to see accounts")} }
+            div { style: "text-align:center; color:{theme::TEXT_MUTED}; padding:40px 0; font-size:14px;", {t.t("Add statement photos to see accounts")} }
         };
     }
 
     let clear_style = format!(
-        "width:100%; padding:10px; margin-bottom:12px; border:1px solid #fecaca; border-radius:8px; background:#fff; color:#ef4444; font-size:14px; font-weight:600; cursor:pointer;{}",
+        "{} width:100%; margin-bottom:12px;{}",
+        theme::BTN_DANGER,
         if busy { " opacity:.5;" } else { "" }
     );
 
@@ -421,10 +434,10 @@ fn PhotosTab(statements: Vec<Statement>, mut version: Signal<u32>, busy: bool, o
             style: "{clear_style}",
             disabled: busy,
             onclick: move |_| confirm_all.set(true),
-            {t.t("🗑 Clear all statement data")}
+            IconText { text: t.t("🗑 Clear all statement data").to_string() }
         }
         if let Some(e) = delete_error() {
-            div { style: "margin-bottom:12px; color:#b91c1c; font-size:13px;", "{t.tr(&e)}" }
+            div { style: "color:{theme::DANGER}; font-size:13px;", "{t.tr(&e)}" }
         }
         for s in statements.iter() {
             StatementCard { key: "{s.id}", statement: s.clone(), on_delete: move |id: String| confirm.set(Some(id)) }
@@ -433,19 +446,19 @@ fn PhotosTab(statements: Vec<Statement>, mut version: Signal<u32>, busy: bool, o
         // ── Clear-all confirm ──
         if confirm_all() {
             div {
-                style: "position:fixed; inset:0; background:rgba(0,0,0,.4); display:flex; align-items:center; justify-content:center; z-index:100;",
+                style: "{theme::OVERLAY}",
                 div {
-                    style: "background:#fff; border-radius:16px; padding:24px; margin:16px; max-width:320px; width:100%;",
-                    h3 { style: "margin:0 0 8px; font-size:17px;", {t.t("Clear all statement data?")} }
-                    p  { style: "margin:0 0 20px; font-size:14px; color:#6b7280;", {t.t("All imported statements and their transactions will be deleted. This cannot be undone.")} }
+                    style: "{theme::DIALOG}",
+                    h3 { style: "margin:0 0 8px; font-size:16px; font-weight:600; color:{theme::TEXT};", {t.t("Clear all statement data?")} }
+                    p  { style: "margin:0 0 20px; font-size:14px; color:{theme::TEXT_MUTED};", {t.t("All imported statements and their transactions will be deleted. This cannot be undone.")} }
                     div { style: "display:flex; gap:10px;",
                         button {
-                            style: "flex:1; padding:10px; border:1px solid #e5e7eb; border-radius:8px; background:#fff; cursor:pointer; font-size:14px;",
+                            style: "{theme::BTN_SECONDARY} flex:1;",
                             onclick: move |_| { confirm_all.set(false); },
                             {t.t("Cancel")}
                         }
                         button {
-                            style: "flex:1; padding:10px; border:none; border-radius:8px; background:#ef4444; color:#fff; cursor:pointer; font-size:14px; font-weight:600;",
+                            style: "{theme::BTN_DANGER} flex:1;",
                             onclick: move |_| {
                                 if !busy {
                                     match store::clear() {
@@ -465,19 +478,19 @@ fn PhotosTab(statements: Vec<Statement>, mut version: Signal<u32>, busy: bool, o
         // ── Delete confirm ──
         if let Some(id) = confirm.read().clone() {
             div {
-                style: "position:fixed; inset:0; background:rgba(0,0,0,.4); display:flex; align-items:center; justify-content:center; z-index:100;",
+                style: "{theme::OVERLAY}",
                 div {
-                    style: "background:#fff; border-radius:16px; padding:24px; margin:16px; max-width:320px; width:100%;",
-                    h3 { style: "margin:0 0 8px; font-size:17px;", {t.t("Delete this statement photo?")} }
-                    p  { style: "margin:0 0 20px; font-size:14px; color:#6b7280;", {t.t("Its transactions will be removed from the lists.")} }
+                    style: "{theme::DIALOG}",
+                    h3 { style: "margin:0 0 8px; font-size:16px; font-weight:600; color:{theme::TEXT};", {t.t("Delete this statement photo?")} }
+                    p  { style: "margin:0 0 20px; font-size:14px; color:{theme::TEXT_MUTED};", {t.t("Its transactions will be removed from the lists.")} }
                     div { style: "display:flex; gap:10px;",
                         button {
-                            style: "flex:1; padding:10px; border:1px solid #e5e7eb; border-radius:8px; background:#fff; cursor:pointer; font-size:14px;",
+                            style: "{theme::BTN_SECONDARY} flex:1;",
                             onclick: move |_| { confirm.set(None); },
                             {t.t("Cancel")}
                         }
                         button {
-                            style: "flex:1; padding:10px; border:none; border-radius:8px; background:#ef4444; color:#fff; cursor:pointer; font-size:14px; font-weight:600;",
+                            style: "{theme::BTN_DANGER} flex:1;",
                             onclick: move |_| {
                                 match store::delete(&id) {
                                     Ok(()) => { delete_error.set(None); version += 1; }
@@ -509,9 +522,9 @@ fn StatementCard(statement: Statement, on_delete: EventHandler<String>) -> Eleme
 
     rsx! {
         div {
-            style: "background:#fff; border-radius:12px; padding:12px; margin-bottom:10px; box-shadow:0 1px 3px rgba(0,0,0,.06); display:flex; gap:10px;",
-            div { style: "flex:1; min-width:0; font-size:13px; color:#6b7280;",
-                div { style: "font-size:14px; font-weight:700; color:#1f2937;", "{s.account_no.clone().unwrap_or_else(|| \"—\".into())}" }
+            style: "{theme::CARD} margin-bottom:10px; display:flex; gap:10px;",
+            div { style: "flex:1; min-width:0; font-size:13px; color:{theme::TEXT_MUTED};",
+                div { style: "font-size:14px; font-weight:600; color:{theme::TEXT};", "{s.account_no.clone().unwrap_or_else(|| \"—\".into())}" }
                 if let Some(n) = &s.account_name { div { "{n}" } }
                 if let Some(p) = period { div { "{p}" } }
                 if let Some(p) = &s.page { div { {t.t("Page {p}").replace("{p}", p)} } }
@@ -520,15 +533,15 @@ fn StatementCard(statement: Statement, on_delete: EventHandler<String>) -> Eleme
                 }
                 div { {t.t("{n} transactions").replace("{n}", &s.transactions.len().to_string())} }
                 if review > 0 {
-                    div { style: "color:#b45309;", {t.t("⚠️ {n} rows need checking").replace("{n}", &review.to_string())} }
+                    div { style: "color:#b45309;", IconText { text: t.t("⚠️ {n} rows need checking").replace("{n}", &review.to_string()), size: 14, gap: 4 } }
                 }
                 for w in s.warnings.iter() {
                     div { style: "color:#b45309;", "{t.tr(w)}" }
                 }
-                div { style: "font-size:11px; color:#9ca3af; margin-top:4px;", {t.t("Imported {date}").replace("{date}", &imported)} }
+                div { style: "font-size:11px; color:{theme::TEXT_MUTED}; margin-top:4px;", {t.t("Imported {date}").replace("{date}", &imported)} }
             }
             button {
-                style: "align-self:flex-start; border:none; background:transparent; color:#ef4444; font-size:13px; cursor:pointer;",
+                style: "align-self:flex-start; border:none; background:transparent; color:{theme::DANGER}; font-size:13px; cursor:pointer;",
                 onclick: move |_| on_delete.call(id.clone()),
                 {t.t("Delete")}
             }

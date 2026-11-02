@@ -8,6 +8,9 @@ use crate::models::{id_card::jpeg_data_url, IdSide, Member};
 use crate::repository::{FamilyRepo, IdCardRepo, MemberRepo};
 use crate::services::id_card_pdf::{self, CardPair};
 use crate::views::photo_picker::{use_photo_picker, PhotoInput};
+use crate::views::icons::{Icon, IconName};
+use crate::views::theme;
+use crate::views::ui::{IconText, InitialsAvatar, ScreenHeader};
 use super::MemberView;
 
 const B64: base64::engine::GeneralPurpose = base64::engine::general_purpose::STANDARD;
@@ -35,7 +38,10 @@ pub fn IdPhotoFields(front: Signal<Option<Vec<u8>>>, back: Signal<Option<Vec<u8>
             PhotoSlot { side: IdSide::Back,  photo: back }
         }
         if error() {
-            div { style: "font-size:12px; color:#ef4444;", {t.t("❌ Could not read that photo")} }
+            div {
+                style: "font-size:12px; color:{theme::DANGER};",
+                IconText { text: t.t("❌ Could not read that photo").to_string(), size: 12, gap: 4 }
+            }
         }
     }
 }
@@ -49,19 +55,19 @@ fn PhotoSlot(side: IdSide, photo: Signal<Option<Vec<u8>>>) -> Element {
     rsx! {
         div {
             style: "flex:1; min-width:0; display:flex; flex-direction:column; gap:6px;",
-            div { style: "font-size:12px; font-weight:600; color:#6b7280;", {t.t(label)} }
+            div { style: "font-size:13px; font-weight:600; color:{theme::TEXT_MUTED};", {t.t(label)} }
             label {
-                style: "aspect-ratio:1.585; border:1px dashed #c7d2fe; border-radius:8px; background:#fff; display:flex; align-items:center; justify-content:center; overflow:hidden; cursor:pointer; font-size:13px; color:#6366f1; text-align:center;",
+                style: "aspect-ratio:1.585; border:1px dashed {theme::PRIMARY}; border-radius:12px; background:{theme::PRIMARY_SOFT}; display:flex; align-items:center; justify-content:center; overflow:hidden; cursor:pointer; font-size:13px; color:{theme::PRIMARY}; text-align:center;",
                 if let Some(src) = src {
                     img { src, style: "width:100%; height:100%; object-fit:contain;" }
                 } else {
-                    {t.t("📷 Add photo")}
+                    IconText { text: t.t("📷 Add photo").to_string() }
                 }
                 PhotoInput { key_name: side.to_string() }
             }
             if photo.read().is_some() {
                 button {
-                    style: "border:none; background:transparent; color:#ef4444; font-size:12px; cursor:pointer; padding:0;",
+                    style: "border:none; background:transparent; color:{theme::DANGER}; font-size:12px; cursor:pointer; padding:0;",
                     onclick: move |_| photo.set(None),
                     {t.t("Remove")}
                 }
@@ -111,15 +117,15 @@ pub fn IdPhotoPreview(member_id: String) -> Element {
 
     rsx! {
         div {
-            style: "background:#fff; border-radius:12px; padding:14px; box-shadow:0 1px 3px rgba(0,0,0,.06);",
-            div { style: "font-size:11px; font-weight:700; color:#9ca3af; text-transform:uppercase; margin-bottom:8px;", {t.t("ID Card Photos")} }
+            style: "{theme::CARD}",
+            div { style: "font-size:14px; font-weight:600; color:{theme::TEXT}; margin-bottom:8px;", {t.t("ID Card Photos")} }
             div {
                 style: "display:flex; gap:10px;",
                 for (side, src) in photos {
                     div {
                         style: "flex:1; min-width:0;",
-                        img { src, style: "width:100%; aspect-ratio:1.585; object-fit:contain; border-radius:6px; background:#f9fafb;" }
-                        div { style: "font-size:11px; color:#9ca3af; text-align:center; margin-top:4px;", {t.t(side_label(side))} }
+                        img { src, style: "width:100%; aspect-ratio:1.585; object-fit:contain; border-radius:8px; background:{theme::BG};" }
+                        div { style: "font-size:12px; color:{theme::TEXT_MUTED}; text-align:center; margin-top:4px;", {t.t(side_label(side))} }
                     }
                 }
             }
@@ -246,33 +252,31 @@ pub fn IdCardsPdf(view: Signal<MemberView>) -> Element {
     };
 
     rsx! {
+        ScreenHeader { title: t.t("ID Cards → PDF"), on_back: move |_| { view.set(MemberView::List); } }
         div {
-            style: "padding:16px; display:flex; flex-direction:column; gap:14px; padding-bottom:40px;",
+            style: "padding:16px; display:flex; flex-direction:column; gap:16px; padding-bottom:40px;",
 
-            // ── Header ──
-            div {
-                style: "display:flex; align-items:center; gap:12px;",
-                button {
-                    style: "border:none; background:transparent; font-size:22px; cursor:pointer; padding:0;",
-                    onclick: move |_| { view.set(MemberView::List); },
-                    "←"
+            div { style: "font-size:14px; color:{theme::TEXT_MUTED}; line-height:1.5;",
+                for (i, part) in t.t("Tap people in the order you want, then drag ☰ to reorder. Each person is one row (front | back) at real card size, 5 per A4 page.").split('☰').enumerate() {
+                    if i > 0 {
+                        span { style: "display:inline-flex; vertical-align:middle;",
+                            Icon { name: IconName::GripVertical, size: 14, color: theme::TEXT_MUTED.to_string() }
+                        }
+                    }
+                    "{part}"
                 }
-                h1 { style: "margin:0; font-size:18px; font-weight:700; color:#1f2937;", {t.t("ID Cards → PDF")} }
-            }
-            div { style: "font-size:13px; color:#6b7280; line-height:1.5;",
-                {t.t("Tap people in the order you want, then drag ☰ to reorder. Each person is one row (front | back) at real card size, 5 per A4 page.")}
             }
 
             // ── Selected, in order ──
             if !picked.is_empty() {
                 div {
-                    style: "background:#fff; border-radius:14px; padding:12px; box-shadow:0 1px 4px rgba(0,0,0,.07); display:flex; flex-direction:column; gap:6px;",
+                    style: "{theme::CARD} display:flex; flex-direction:column; gap:6px;",
                     div { style: "display:flex; justify-content:space-between; align-items:center;",
-                        span { style: "font-size:11px; font-weight:700; color:#9ca3af; text-transform:uppercase;",
+                        span { style: "font-size:14px; font-weight:600; color:{theme::TEXT};",
                             {t.t("PDF order")}
                         }
                         button {
-                            style: "border:none; background:transparent; color:#ef4444; font-size:12px; cursor:pointer;",
+                            style: "border:none; background:transparent; color:{theme::DANGER}; font-size:13px; cursor:pointer;",
                             onclick: move |_| selected.write().clear(),
                             {t.t("Clear")}
                         }
@@ -309,7 +313,7 @@ pub fn IdCardsPdf(view: Signal<MemberView>) -> Element {
                 div { style: "display:flex; flex-wrap:wrap; gap:8px;",
                     for name in families {
                         button {
-                            style: "border:1px solid #c7d2fe; background:#eef2ff; color:#4f46e5; border-radius:16px; padding:6px 12px; font-size:13px; cursor:pointer;",
+                            style: "border:1px solid #e2e5f7; background:#e2e5f7; color:#3f51b5; border-radius:999px; padding:8px 14px; font-size:14px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:4px;",
                             onclick: {
                                 let name = name.clone();
                                 move |_| {
@@ -323,7 +327,9 @@ pub fn IdCardsPdf(view: Signal<MemberView>) -> Element {
                                     }
                                 }
                             },
-                            "+ 🏠 {name}"
+                            Icon { name: IconName::Plus, size: 14 }
+                            Icon { name: IconName::House, size: 14 }
+                            "{name}"
                         }
                     }
                 }
@@ -331,9 +337,9 @@ pub fn IdCardsPdf(view: Signal<MemberView>) -> Element {
 
             // ── Everyone ──
             div {
-                style: "background:#fff; border-radius:14px; box-shadow:0 1px 4px rgba(0,0,0,.07); overflow:hidden;",
+                style: "{theme::CARD} padding:0 16px; overflow:hidden;",
                 if candidates.read().is_empty() {
-                    div { style: "padding:24px; text-align:center; color:#9ca3af; font-size:13px;", {t.t("No members yet")} }
+                    div { style: "padding:24px; text-align:center; color:{theme::TEXT_MUTED}; font-size:13px;", {t.t("No members yet")} }
                 }
                 for c in candidates.read().iter().cloned() {
                     CandidateRow { candidate: c, selected }
@@ -341,25 +347,34 @@ pub fn IdCardsPdf(view: Signal<MemberView>) -> Element {
             }
 
             if !status.read().is_empty() {
-                div { style: "font-size:13px; color:#374151; background:#f3f4f6; border-radius:8px; padding:10px 12px;", "{status}" }
+                div { style: "font-size:13px; color:{theme::PRIMARY}; background:{theme::PRIMARY_SOFT}; border-radius:12px; padding:10px 12px;",
+                    IconText {
+                        text: status.read().clone(),
+                        size: 14,
+                        color: if status.read().starts_with('❌') { Some(theme::DANGER.to_string()) } else { None },
+                    }
+                }
             }
 
             if ready() {
                 button {
-                    style: "padding:14px; background:#10b981; color:#fff; border:none; border-radius:12px; font-size:16px; font-weight:700; cursor:pointer;",
+                    style: "{theme::BTN_PRIMARY} background:{theme::POSITIVE};",
                     onclick: share,
-                    {t.t("📤 Share / Save PDF")}
+                    IconText { text: t.t("📤 Share / Save PDF").to_string() }
                 }
             } else {
                 button {
                     style: if picked.is_empty() {
-                        "padding:14px; background:#c7d2fe; color:#fff; border:none; border-radius:12px; font-size:16px; font-weight:700;"
+                        "{theme::BTN_PRIMARY} opacity:.4; cursor:default;"
                     } else {
-                        "padding:14px; background:#6366f1; color:#fff; border:none; border-radius:12px; font-size:16px; font-weight:700; cursor:pointer;"
+                        "{theme::BTN_PRIMARY}"
                     },
                     disabled: picked.is_empty(),
                     onclick: create,
-                    {t.t("📄 Create PDF")} " ({picked.len()})"
+                    span { style: "display:inline-flex; align-items:center; justify-content:center;",
+                        IconText { text: t.t("📄 Create PDF").to_string() }
+                        "\u{a0}({picked.len()})"
+                    }
                 }
             }
         }
@@ -383,9 +398,9 @@ fn CandidateRow(candidate: Candidate, selected: Signal<Vec<String>>) -> Element 
     rsx! {
         div {
             style: if has_photos {
-                "display:flex; align-items:center; gap:10px; padding:10px 12px; border-bottom:1px solid #f3f4f6; cursor:pointer;"
+                "display:flex; align-items:center; gap:10px; padding:10px 0; {theme::ROW_DIVIDER} cursor:pointer;"
             } else {
-                "display:flex; align-items:center; gap:10px; padding:10px 12px; border-bottom:1px solid #f3f4f6; opacity:.45;"
+                "display:flex; align-items:center; gap:10px; padding:10px 0; {theme::ROW_DIVIDER} opacity:.45;"
             },
             onclick: move |_| {
                 if !has_photos { return; }
@@ -397,17 +412,22 @@ fn CandidateRow(candidate: Candidate, selected: Signal<Vec<String>>) -> Element 
             },
             div {
                 style: if position.is_some() {
-                    "width:26px; height:26px; border-radius:50%; background:#6366f1; color:#fff; font-size:13px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0;"
+                    "width:26px; height:26px; border-radius:50%; background:{theme::PRIMARY}; color:#fff; font-size:13px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0;"
                 } else {
-                    "width:26px; height:26px; border-radius:50%; border:2px solid #d1d5db; flex-shrink:0;"
+                    "width:26px; height:26px; border-radius:50%; border:2px solid {theme::BORDER}; flex-shrink:0;"
                 },
                 if let Some(p) = position { "{p + 1}" }
             }
-            span { style: "font-size:20px;", "{candidate.member.avatar()}" }
+            InitialsAvatar { name: candidate.member.full_name.clone(), seed: candidate.member.id.clone(), size: 36 }
             div { style: "flex:1; min-width:0;",
-                div { style: "font-size:14px; font-weight:600; color:#1f2937;", "{candidate.member.full_name}" }
-                div { style: "font-size:12px; color:#9ca3af;",
-                    if let Some(f) = &candidate.family_name { "🏠 {f}" }
+                div { style: "font-size:14px; color:{theme::TEXT};", "{candidate.member.full_name}" }
+                div { style: "font-size:13px; color:{theme::TEXT_MUTED};",
+                    if let Some(f) = &candidate.family_name {
+                        span { style: "display:inline-flex; align-items:center; gap:4px;",
+                            Icon { name: IconName::House, size: 12 }
+                            "{f}"
+                        }
+                    }
                     if let Some(m) = missing { span { style: "color:#d97706; margin-left:6px;", "{m}" } }
                 }
             }
@@ -434,25 +454,25 @@ fn OrderRow(index: usize, candidate: Candidate, selected: Signal<Vec<String>>, d
         div {
             style: format!(
                 "height:{ORDER_ROW_PX}px; display:flex; align-items:center; gap:8px; border-radius:8px; padding:0 4px; {}",
-                if dragging { "background:#eef2ff; box-shadow:0 2px 8px rgba(99,102,241,.35);" } else { "background:#fff;" }
+                if dragging { "background:#e2e5f7; box-shadow:0 2px 8px rgba(63,81,181,.3);" } else { "background:#fff;" }
             ),
             // Drag handle: touch-action:none stops the page scrolling while dragging
             div {
-                style: "width:36px; height:100%; display:flex; align-items:center; justify-content:center; color:#9ca3af; font-size:18px; cursor:grab; touch-action:none; user-select:none; -webkit-user-select:none;",
+                style: "width:36px; height:100%; display:flex; align-items:center; justify-content:center; color:#8a8d9f; cursor:grab; touch-action:none; user-select:none; -webkit-user-select:none;",
                 onpointerdown: move |e| {
                     e.prevent_default();
                     drag.set(Some(Drag { from: index, at: index, start_y: e.client_coordinates().y }));
                 },
-                "☰"
+                Icon { name: IconName::GripVertical, size: 18, color: theme::TEXT_MUTED.to_string() }
             }
-            span { style: "width:20px; font-size:13px; font-weight:700; color:#6366f1; text-align:right;", "{index + 1}." }
-            span { style: "flex:1; min-width:0; font-size:14px; color:#1f2937; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;",
+            span { style: "width:20px; font-size:13px; font-weight:700; color:#3f51b5; text-align:right;", "{index + 1}." }
+            span { style: "flex:1; min-width:0; font-size:14px; color:#1f2133; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;",
                 "{candidate.member.full_name}"
             }
             button {
-                style: "border:none; background:transparent; color:#9ca3af; font-size:16px; cursor:pointer; width:28px;",
+                style: "border:none; background:transparent; cursor:pointer; width:28px; display:flex; align-items:center; justify-content:center; padding:0;",
                 onclick: move |_| { selected.write().remove(index); },
-                "✕"
+                Icon { name: IconName::X, size: 18, color: theme::TEXT_MUTED.to_string() }
             }
         }
     }

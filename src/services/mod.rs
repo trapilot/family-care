@@ -2,6 +2,7 @@ pub mod holding_service;
 pub mod id_card_pdf;
 pub mod member_service;
 pub mod rate_service;
+pub mod receipt;
 pub mod reminder_service;
 pub mod report_service;
 pub mod statement;

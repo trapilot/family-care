@@ -8,6 +8,9 @@ pub mod members;
 pub mod pin;
 pub mod rates;
 pub mod photo_picker;
+pub mod theme;
+pub mod icons;
+pub mod ui;
 
 use dioxus::prelude::*;
 
@@ -62,15 +65,6 @@ pub fn currency_name(t: &crate::i18n::I18n, list: &[crate::models::CurrencyInfo]
     match list.iter().find(|i| &i.code == c) {
         Some(info) => t.tr(&info.name),
         None       => c.to_string(),
-    }
-}
-
-/// Card color of a money type
-pub fn currency_color(c: &crate::models::Currency) -> &'static str {
-    match c {
-        crate::models::Currency::VND  => "#6366f1",
-        crate::models::Currency::USD  => "#10b981",
-        crate::models::Currency::GOLD => "#f59e0b",
     }
 }
 
@@ -147,15 +141,13 @@ fn group_amount(raw: &str) -> String {
     }
 }
 
-const AMOUNT_INPUT_STYLE: &str = "border:1px solid #e5e7eb; border-radius:8px; padding:10px 12px; font-size:16px; outline:none; background:#fff;";
-
 /// Number input that shows thousands separators (1,500,000) while `value` / `oninput` stay raw (1500000).
 #[component]
 pub fn AmountInput(
     value: String,
     oninput: EventHandler<String>,
     #[props(default = "0".to_string())] placeholder: String,
-    #[props(default = AMOUNT_INPUT_STYLE.to_string())] style: String,
+    #[props(default = theme::INPUT.to_string())] style: String,
 ) -> Element {
     let display = group_amount(&value);
     rsx! {

@@ -88,10 +88,6 @@ pub struct Member {
 }
 
 impl Member {
-    pub fn avatar(&self) -> String {
-        self.avatar_emoji.as_deref().unwrap_or("👤").to_string()
-    }
-
     pub fn from_row(row: &Row) -> rusqlite::Result<Self> {
         let role_str: String = row.get("role")?;
         let gender_str: Option<String> = row.get("gender")?;

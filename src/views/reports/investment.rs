@@ -4,7 +4,7 @@ use rust_decimal::Decimal;
 
 use crate::app::AppState;
 use crate::services::{report_service::InvestmentPnlItem, ReportService};
-use crate::views::fmt_currency;
+use crate::views::{fmt_currency, theme};
 use crate::models::Currency;
 use super::expense::EmptyState;
 
@@ -57,27 +57,27 @@ pub fn InvestmentReport() -> Element {
     );
 
     let unrealized_color = if total_unrealized >= Decimal::ZERO {
-        "#6ee7b7"
+        "#b8f0e2"
     } else {
-        "#fca5a5"
+        "#ffc2d3"
     };
 
     let realized_color = if total_realized >= Decimal::ZERO {
-        "#fde68a"
+        "#ffffff"
     } else {
-        "#fca5a5"
+        "#ffc2d3"
     };
 
     rsx! {
         div {
-            style: "display:flex; flex-direction:column; gap:14px;",
+            style: "display:flex; flex-direction:column; gap:16px;",
 
             // ── Overview ──
             div {
-                style: "background:linear-gradient(135deg, #0f172a, #1e293b); border-radius:12px; padding:16px; color:#fff;",
+                style: "background:{theme::PRIMARY}; border-radius:16px; padding:16px; color:#fff;",
 
                 div {
-                    style: "font-size:11px; opacity:.6; text-transform:uppercase; letter-spacing:.5px; margin-bottom:12px;",
+                    style: "font-size:13px; opacity:.8; margin-bottom:12px;",
                     {t.t("Investment Overview")}
                 }
 
@@ -87,13 +87,13 @@ pub fn InvestmentReport() -> Element {
                     InvStat {
                         label: t.t("Cost Basis"),
                         value: fmt_currency(total_cost, &Currency::VND),
-                        color: "#a5b4fc"
+                        color: "#ffffff"
                     }
 
                     InvStat {
                         label: t.t("Market Value"),
                         value: fmt_currency(total_mv, &Currency::VND),
-                        color: "#6ee7b7"
+                        color: "#b8f0e2"
                     }
 
                     InvStat {
@@ -138,8 +138,8 @@ pub fn InvestmentReport() -> Element {
 fn InvestmentCard(item: InvestmentPnlItem) -> Element {
     let t = use_i18n();
     let unr = item.unrealized_pnl.unwrap_or(Decimal::ZERO);
-    let unr_color  = if unr >= Decimal::ZERO { "#10b981" } else { "#ef4444" };
-    let real_color = if item.realized_pnl >= Decimal::ZERO { "#10b981" } else { "#ef4444" };
+    let unr_color  = if unr >= Decimal::ZERO { theme::POSITIVE } else { theme::NEGATIVE };
+    let real_color = if item.realized_pnl >= Decimal::ZERO { theme::POSITIVE } else { theme::NEGATIVE };
 
     let unr_sign  = if unr >= Decimal::ZERO { "+" } else { "" };
     let real_sign = if item.realized_pnl >= Decimal::ZERO { "+" } else { "" };
@@ -153,19 +153,19 @@ fn InvestmentCard(item: InvestmentPnlItem) -> Element {
 
     rsx! {
         div {
-            style: "background:#fff; border-radius:12px; padding:14px; box-shadow:0 1px 3px rgba(0,0,0,.06);",
+            style: "{theme::CARD}",
 
             // Symbol + name
             div {
                 style: "display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;",
                 div {
-                    div { style: "font-size:16px; font-weight:800; color:#1f2937;", "{item.symbol}" }
+                    div { style: "font-size:15px; font-weight:600; color:{theme::TEXT};", "{item.symbol}" }
                     if let Some(ref name) = item.name {
-                        div { style: "font-size:12px; color:#9ca3af;", "{name}" }
+                        div { style: "font-size:12px; color:{theme::TEXT_MUTED};", "{name}" }
                     }
                 }
                 div { style: "text-align:right;",
-                    div { style: "font-size:16px; font-weight:700; color:{unr_color};",
+                    div { style: "font-size:15px; font-weight:600; color:{unr_color};",
                         "{unr_sign}{fmt_currency(unr, &Currency::VND)}"
                     }
                     div { style: "font-size:12px; color:{unr_color};", "{pct_str}" }
@@ -175,11 +175,11 @@ fn InvestmentCard(item: InvestmentPnlItem) -> Element {
             // Stats grid
             div {
                 style: "display:grid; grid-template-columns:repeat(3,1fr); gap:6px;",
-                PnlCell { label: t.t("Quantity"),    value: format!("{:.4}", item.quantity),           color: "#374151" }
-                PnlCell { label: t.t("Avg Cost"),    value: format!("{:.0}", item.avg_buy_price),       color: "#374151" }
-                PnlCell { label: t.t("Last Price"),  value: item.last_price.map(|p| format!("{p:.0}")).unwrap_or("—".into()), color: "#374151" }
-                PnlCell { label: t.t("Cost Basis"),  value: fmt_currency(item.cost_basis, &Currency::VND),  color: "#6b7280" }
-                PnlCell { label: t.t("Mkt Value"),   value: item.market_value.map(|v| fmt_currency(v, &Currency::VND)).unwrap_or("—".into()), color: "#6b7280" }
+                PnlCell { label: t.t("Quantity"),    value: format!("{:.4}", item.quantity),           color: theme::TEXT }
+                PnlCell { label: t.t("Avg Cost"),    value: format!("{:.0}", item.avg_buy_price),       color: theme::TEXT }
+                PnlCell { label: t.t("Last Price"),  value: item.last_price.map(|p| format!("{p:.0}")).unwrap_or("—".into()), color: theme::TEXT }
+                PnlCell { label: t.t("Cost Basis"),  value: fmt_currency(item.cost_basis, &Currency::VND),  color: theme::TEXT_MUTED }
+                PnlCell { label: t.t("Mkt Value"),   value: item.market_value.map(|v| fmt_currency(v, &Currency::VND)).unwrap_or("—".into()), color: theme::TEXT_MUTED }
                 PnlCell { label: t.t("Realized P&L"), value: format!("{real_sign}{}", fmt_currency(item.realized_pnl, &Currency::VND)), color: real_color }
             }
         }
@@ -198,7 +198,7 @@ fn InvStat(label: &'static str, value: String, color: &'static str) -> Element {
             }
 
             div {
-                style: "font-size:13px; font-weight:700; color:{color};",
+                style: "font-size:14px; font-weight:600; color:{color};",
                 "{value}"
             }
         }
@@ -209,8 +209,8 @@ fn InvStat(label: &'static str, value: String, color: &'static str) -> Element {
 fn PnlCell(label: &'static str, value: String, color: &'static str) -> Element {
     rsx! {
         div {
-            style: "background:#f9fafb; border-radius:6px; padding:6px 8px;",
-            div { style: "font-size:10px; color:#9ca3af; margin-bottom:1px;", "{label}" }
+            style: "background:{theme::BG}; border-radius:10px; padding:6px 8px;",
+            div { style: "font-size:10px; color:{theme::TEXT_MUTED}; margin-bottom:1px;", "{label}" }
             div { style: "font-size:12px; font-weight:600; color:{color};", "{value}" }
         }
     }

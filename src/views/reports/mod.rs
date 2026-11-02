@@ -4,7 +4,10 @@ pub mod timeline;
 pub mod type_transactions;
 
 use dioxus::prelude::*;
+use crate::app::SelectedMonth;
 use crate::i18n::use_i18n;
+use crate::views::icons::IconName;
+use crate::views::ui::{AppHeader, UnderlineTabs};
 use expense::ExpenseReport;
 use timeline::TimelineReport;
 use investment::InvestmentReport;
@@ -19,6 +22,9 @@ pub fn Reports() -> Element {
     let mut tab = use_signal(|| ReportTab::Expense);
     // Tapping Income / Expense in a report opens its transactions; reports read this via context
     let mut drill = use_signal(|| None::<TypeDrill>);
+    let SelectedMonth(mut selected) = use_context::<SelectedMonth>();
+    let on_expense = *tab.read() == ReportTab::Expense;
+    let (year, month) = selected();
     use_context_provider(|| drill);
 
     rsx! {
@@ -29,34 +35,29 @@ pub fn Reports() -> Element {
         div {
             style: if drill.read().is_some() { "display:none;" } else { "display:flex; flex-direction:column; height:100%;" },
 
-            // ── Header ──
-            div {
-                style: "padding:16px 16px 0; background:#fff;",
-                h1 { style: "margin:0 0 12px; font-size:20px; font-weight:700; color:#1f2937;", {t.t("Reports")} }
-                div {
-                    style: "display:flex; gap:0; border-bottom:1px solid #f3f4f6;",
-                    for (tab_kind, label) in [
-                        (ReportTab::Expense,    t.t("Expense")),
-                        (ReportTab::Timeline,   t.t("Timeline")),
-                        (ReportTab::Investment, t.t("Invest")),
-                    ] {
-                        {
-                            let is_active = *tab.read() == tab_kind;
-                            let t_clone = tab_kind.clone();
-                            rsx! {
-                                button {
-                                    style: if is_active {
-                                        "flex:1; padding:10px 0; border:none; border-bottom:2px solid #6366f1; background:#fff; font-size:13px; font-weight:600; color:#6366f1; cursor:pointer;"
-                                    } else {
-                                        "flex:1; padding:10px 0; border:none; border-bottom:2px solid transparent; background:#fff; font-size:13px; color:#9ca3af; cursor:pointer;"
-                                    },
-                                    onclick: move |_| { tab.set(t_clone.clone()); },
-                                    "{label}"
-                                }
-                            }
-                        }
-                    }
-                }
+            AppHeader {
+                title: t.t("Reports").to_string(),
+                month: if on_expense { Some((year, month)) } else { None },
+                on_month: if on_expense { Some(EventHandler::new(move |ym| selected.set(ym))) } else { None },
+            }
+
+            // ── Tabs ──
+            UnderlineTabs {
+                tabs: vec![
+                    (t.t("Expense").to_string(),  Some(IconName::ArrowDown)),
+                    (t.t("Timeline").to_string(), Some(IconName::BarChart)),
+                    (t.t("Invest").to_string(),   Some(IconName::TrendingUp)),
+                ],
+                active: match *tab.read() {
+                    ReportTab::Expense    => 0,
+                    ReportTab::Timeline   => 1,
+                    ReportTab::Investment => 2,
+                },
+                on_select: move |i| tab.set(match i {
+                    0 => ReportTab::Expense,
+                    1 => ReportTab::Timeline,
+                    _ => ReportTab::Investment,
+                }),
             }
 
             // ── Content ──

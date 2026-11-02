@@ -1,13 +1,16 @@
 use dioxus::prelude::*;
 use crate::i18n::use_i18n;
+use chrono::Datelike;
+use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
 
-use crate::app::AppState;
-use crate::models::{CurrencyInfo, Transaction};
-use crate::repository::{CurrencyRepo, TransactionRepo};
+use crate::app::{AppState, SelectedMonth};
+use crate::services::report_service::ExpenseByCategoryItem;
 use crate::services::{ReminderService, ReportService};
-use crate::views::rates::ConvertedTotal;
-use crate::views::{currency_color, currency_name, current_month, fmt_currency, fmt_vnd, month_label, shown_totals, ts_to_date_str};
+use crate::views::fmt_vnd;
+use crate::views::icons::IconName;
+use crate::views::ui::{AppHeader, IconCircle, IconText, SectionTitle};
+use crate::views::theme;
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
@@ -15,25 +18,19 @@ use crate::views::{currency_color, currency_name, current_month, fmt_currency, f
 pub fn Dashboard() -> Element {
     let t = use_i18n();
     let state = use_context::<AppState>();
-    let (year, month) = current_month();
+    let SelectedMonth(mut selected) = use_context::<SelectedMonth>();
 
     // ── Data signals ──
-    let net_worth = use_signal(|| crate::services::report_service::NetWorth {
-        vnd: Decimal::ZERO,
-        usd: Decimal::ZERO,
-        gold: Decimal::ZERO,
-    });
     let summary   = use_signal(|| crate::services::report_service::MonthlySummary {
-        year, month,
+        year: 0, month: 0,
         income: Decimal::ZERO, expense: Decimal::ZERO,
         savings: Decimal::ZERO, savings_rate: Decimal::ZERO,
         net_transfers: Decimal::ZERO,
     });
-    let money_types = use_signal(Vec::<CurrencyInfo>::new);
     let alerts    = use_signal(|| vec![]);
-    let recent    = use_signal(|| vec![]);
-    // Wallet names by id, for the opening-balance rows of Recent
-    let wallet_names = use_signal(std::collections::HashMap::<String, String>::new);
+    // Expense per category of the selected month
+    let by_category = use_signal(Vec::<ExpenseByCategoryItem>::new);
+    let mut show_all = use_signal(|| false);
     // Reminders due today, as (id, title, body, done)
     let mut due_today = use_signal(Vec::<(String, String, String, bool)>::new);
     // Unpaid monthly bills, as (id, month, title, body)
@@ -59,24 +56,19 @@ pub fn Dashboard() -> Element {
         }
     };
 
-    // ── Load on mount ──
+    // ── Load on mount and whenever the month changes ──
     use_effect({
         let state = state.clone();
-        let mut net_worth = net_worth.clone();
         let mut summary   = summary.clone();
-        let mut money_types = money_types;
         let mut alerts    = alerts.clone();
-        let mut recent    = recent.clone();
-        let mut wallet_names = wallet_names;
+        let mut by_category = by_category;
         let mut load_due = load_due.clone();
         move || {
+            let (year, month) = selected();
             load_due(t.lang());
             state.with_conn(|conn| {
-                if let Ok(list) = CurrencyRepo::list(conn) {
-                    money_types.set(list);
-                }
-                if let Ok(nw) = ReportService::net_worth(conn) {
-                    net_worth.set(nw);
+                if let Ok(list) = ReportService::expense_by_category(conn, year, month) {
+                    by_category.set(list);
                 }
                 if let Ok(s) = ReportService::monthly_summary(conn, year, month) {
                     summary.set(s);
@@ -84,146 +76,184 @@ pub fn Dashboard() -> Element {
                 if let Ok(a) = ReportService::overspending_alerts(conn, year, month) {
                     alerts.set(a);
                 }
-                if let Ok(txns) = TransactionRepo::list(conn, &crate::repository::transaction_repo::TxnFilter {
-                    limit: Some(5),
-                    skip_zero_opening: true,
-                    ..Default::default()
-                }) {
-                    recent.set(txns);
-                }
-                if let Ok(ws) = crate::repository::WalletRepo::list_active(conn) {
-                    wallet_names.set(ws.into_iter().map(|w| (w.id, w.name)).collect());
-                }
             });
         }
     });
 
-    let s = summary.read();
-    let worth_cards = shown_totals(&money_types.read(), net_worth.read().vnd, net_worth.read().usd, net_worth.read().gold);
+    let (year, month) = selected();
+    let s = summary.read().clone();
+    let balance = s.income - s.expense;
+    let balance_color = if balance >= Decimal::ZERO { theme::POSITIVE } else { theme::NEGATIVE };
+
+    // Average tiles
+    let days = {
+        let first = chrono::NaiveDate::from_ymd_opt(year, month, 1).unwrap_or_default();
+        let next = if month == 12 { chrono::NaiveDate::from_ymd_opt(year + 1, 1, 1) } else { chrono::NaiveDate::from_ymd_opt(year, month + 1, 1) };
+        next.map(|n| (n - first).num_days() as usize).unwrap_or(30)
+    };
+    let today = chrono::Local::now().date_naive();
+    let days_elapsed = if (year, month) == (today.year(), today.month()) {
+        today.day() as usize
+    } else if (year, month) < (today.year(), today.month()) {
+        days
+    } else {
+        0
+    };
+    let day_avg = if days_elapsed == 0 { Decimal::ZERO } else { s.expense / Decimal::from(days_elapsed as u64) };
+
+    let cat_items = by_category.read().clone();
+    let shown_cats = if show_all() { cat_items.len() } else { 3.min(cat_items.len()) };
+    let more_rotate = if show_all() { "rotate(180deg)" } else { "none" };
 
     rsx! {
         div {
-            style: "padding:16px; display:flex; flex-direction:column; gap:16px;",
-
-            // ── Header ──
-            div {
-                style: "display:flex; justify-content:space-between; align-items:center;",
-                h1 { style: "margin:0; font-size:20px; font-weight:700; color:#1f2937;", "Family Finance" }
-                span { style: "font-size:13px; color:#6b7280;", "{month_label(year, month)}" }
+            style: "display:flex; flex-direction:column;",
+            AppHeader {
+                title: t.t("Overview").to_string(),
+                month: Some((year, month)),
+                on_month: Some(EventHandler::new(move |ym| selected.set(ym))),
             }
 
-            // ── Net Worth Cards ──
             div {
-                style: "display:grid; grid-template-columns:repeat({worth_cards.len()},1fr); gap:10px;",
-                for (cur, total) in worth_cards.iter() {
-                    NetWorthCard {
-                        label: currency_name(&t, &money_types.read(), cur),
-                        value: fmt_currency(*total, cur),
-                        color: currency_color(cur),
+                style: "padding:16px; display:flex; flex-direction:column; gap:16px;",
+
+                // ── Balance ──
+                div {
+                    div { style: "text-align:center; font-size:13px; color:{theme::TEXT};", {t.t("Balance")} }
+                    div { style: "text-align:center; font-size:19px; font-weight:600; color:{balance_color}; margin-bottom:10px;", "{fmt_vnd(balance)}" }
+                    div {
+                        style: "display:grid; grid-template-columns:1fr 1fr; gap:8px;",
+                        div {
+                            style: "background:{theme::NEGATIVE}; color:#fff; border-radius:{theme::CARD_RADIUS}; padding:12px; text-align:center;",
+                            div { style: "font-size:13px;", {t.t("Expense")} }
+                            div { style: "font-size:19px; font-weight:600; overflow-wrap:anywhere;", "{fmt_vnd(s.expense)}" }
+                        }
+                        div {
+                            style: "background:{theme::POSITIVE_SOFT}; color:{theme::TEXT}; border-radius:{theme::CARD_RADIUS}; padding:12px; text-align:center;",
+                            div { style: "font-size:13px;", {t.t("Income")} }
+                            div { style: "font-size:19px; font-weight:600; color:{theme::POSITIVE}; overflow-wrap:anywhere;", "{fmt_vnd(s.income)}" }
+                        }
                     }
                 }
-            }
-            ConvertedTotal { vnd: net_worth.read().vnd, usd: net_worth.read().usd, gold: net_worth.read().gold }
 
-            // ── Reminders due today ──
-            if !due_today.read().is_empty() || !unpaid_bills.read().is_empty() {
+                // ── Averages ──
                 div {
-                    style: "background:#eef2ff; border:1px solid #c7d2fe; border-radius:12px; padding:14px 16px; display:flex; flex-direction:column; gap:8px;",
-                    h2 { style: "margin:0; font-size:15px; font-weight:600; color:#4338ca;", {t.t("🔔 Due today")} }
-                    for (id, title, body, done) in due_today.read().iter().cloned() {
-                        div { style: "display:flex; gap:10px; align-items:center;",
-                            div { style: if done { "flex:1; min-width:0; opacity:.55;" } else { "flex:1; min-width:0;" },
-                                div { style: "font-size:13px; font-weight:600; color:#1f2937;", "{title}" }
-                                div { style: "font-size:13px; color:#374151; overflow-wrap:anywhere;", "{body}" }
+                    style: "display:grid; grid-template-columns:repeat(2,1fr); gap:6px;",
+                    for (label, value) in [
+                        (t.t("Day (avg.)"), day_avg),
+                        (t.t("Month"), s.expense),
+                    ] {
+                        div {
+                            style: "background:#fbeef2; border-radius:14px; padding:10px 6px; text-align:center;",
+                            div { style: "font-size:12px; color:{theme::TEXT_MUTED};", "{label}" }
+                            div {
+                                style: if value.is_zero() { "font-size:14px; font-weight:600; color:#8a8d9f; overflow-wrap:anywhere;" } else { "font-size:14px; font-weight:600; color:#1f2133; overflow-wrap:anywhere;" },
+                                "{fmt_vnd(value)}"
                             }
-                            if done {
-                                span { style: "font-size:12px; color:#10b981; font-weight:600; flex-shrink:0;", {t.t("✓ Done")} }
-                            } else {
+                        }
+                    }
+                }
+
+                // ── Top categories ──
+                div {
+                    style: "display:flex; flex-direction:column; gap:14px;",
+                    SectionTitle { title: t.t("Expense").to_string() }
+                    if cat_items.is_empty() {
+                        div { style: "text-align:center; color:{theme::TEXT_MUTED}; font-size:14px; padding:8px 0;", {t.t("No expenses this month")} }
+                    }
+                    for item in cat_items.iter().take(shown_cats) {
+                        CategoryRow { item: item.clone() }
+                    }
+                    if cat_items.len() > 3 {
+                        div {
+                            style: "display:flex; align-items:center; gap:12px; cursor:pointer;",
+                            onclick: move |_| show_all.set(!show_all()),
+                            span {
+                                style: "display:inline-flex; transform:{more_rotate};",
+                                IconCircle { icon: None, fallback: IconName::ChevronDown, color: theme::TEXT_MUTED.to_string(), size: 48 }
+                            }
+                            span { style: "font-size:15px; color:{theme::TEXT};",
+                                if show_all() { {t.t("Less")} } else { {t.t("More…")} }
+                            }
+                        }
+                    }
+                }
+
+                // ── Reminders due today ──
+                if !due_today.read().is_empty() || !unpaid_bills.read().is_empty() {
+                    div {
+                        style: "{theme::CARD} display:flex; flex-direction:column; gap:8px;",
+                        h2 {
+                            style: "margin:0; font-size:14px; font-weight:600; color:{theme::PRIMARY}; display:flex; align-items:center; gap:6px;",
+                            IconText { text: t.t("🔔 Due today").to_string(), size: 18 }
+                        }
+                        for (id, title, body, done) in due_today.read().iter().cloned() {
+                            div { style: "display:flex; gap:10px; align-items:center;",
+                                div { style: if done { "flex:1; min-width:0; opacity:.55;" } else { "flex:1; min-width:0;" },
+                                    div { style: "font-size:13px; font-weight:600; color:{theme::TEXT};", IconText { text: title, size: 14 } }
+                                    div { style: "font-size:13px; color:{theme::TEXT}; overflow-wrap:anywhere;", IconText { text: body, size: 14 } }
+                                }
+                                if done {
+                                    span { style: "font-size:12px; color:{theme::POSITIVE}; font-weight:600; flex-shrink:0;", IconText { text: t.t("✓ Done").to_string(), size: 14, gap: 4 } }
+                                } else {
+                                    button {
+                                        style: "border:none; background:{theme::PRIMARY}; color:#fff; border-radius:999px; padding:6px 12px; font-size:12px; font-weight:600; cursor:pointer; flex-shrink:0;",
+                                        onclick: {
+                                            let state = state.clone();
+                                            let mut load_due = load_due.clone();
+                                            move |_| {
+                                                let today = chrono::Local::now().date_naive();
+                                                let _ = state.with_conn(|conn| ReminderService::mark_done(conn, &id, today));
+                                                load_due(t.lang());
+                                            }
+                                        },
+                                        IconText { text: t.t("✓ Done for today").to_string(), size: 14, gap: 4 }
+                                    }
+                                }
+                            }
+                        }
+                        for (id, month, title, body) in unpaid_bills.read().iter().cloned() {
+                            div { style: "display:flex; gap:10px; align-items:center;",
+                                div { style: "flex:1; min-width:0;",
+                                    div { style: "font-size:13px; font-weight:600; color:{theme::NEGATIVE};", IconText { text: title, size: 14 } }
+                                    div { style: "font-size:13px; color:{theme::TEXT}; overflow-wrap:anywhere;", IconText { text: body, size: 14 } }
+                                }
                                 button {
-                                    style: "border:none; background:#6366f1; color:#fff; border-radius:8px; padding:6px 10px; font-size:12px; font-weight:600; cursor:pointer; flex-shrink:0;",
+                                    style: "border:none; background:{theme::POSITIVE}; color:#fff; border-radius:999px; padding:6px 12px; font-size:12px; font-weight:600; cursor:pointer; flex-shrink:0;",
                                     onclick: {
                                         let state = state.clone();
                                         let mut load_due = load_due.clone();
                                         move |_| {
-                                            let today = chrono::Local::now().date_naive();
-                                            let _ = state.with_conn(|conn| ReminderService::mark_done(conn, &id, today));
+                                            let _ = state.with_conn(|conn| ReminderService::mark_bill_paid(conn, &id, &month));
                                             load_due(t.lang());
                                         }
                                     },
-                                    {t.t("✓ Done for today")}
+                                    IconText { text: t.t("✓ Paid").to_string(), size: 14, gap: 4 }
                                 }
                             }
                         }
                     }
-                    for (id, month, title, body) in unpaid_bills.read().iter().cloned() {
-                        div { style: "display:flex; gap:10px; align-items:center;",
-                            div { style: "flex:1; min-width:0;",
-                                div { style: "font-size:13px; font-weight:600; color:#b91c1c;", "{title}" }
-                                div { style: "font-size:13px; color:#374151; overflow-wrap:anywhere;", "{body}" }
-                            }
-                            button {
-                                style: "border:none; background:#10b981; color:#fff; border-radius:8px; padding:6px 10px; font-size:12px; font-weight:600; cursor:pointer; flex-shrink:0;",
-                                onclick: {
-                                    let state = state.clone();
-                                    let mut load_due = load_due.clone();
-                                    move |_| {
-                                        let _ = state.with_conn(|conn| ReminderService::mark_bill_paid(conn, &id, &month));
-                                        load_due(t.lang());
-                                    }
-                                },
-                                {t.t("✓ Paid")}
-                            }
+                }
+
+                // ── Overspending Alerts ──
+                if !alerts.read().is_empty() {
+                    div {
+                        style: "{theme::CARD}",
+                        h2 {
+                            style: "margin:0 0 10px; font-size:14px; font-weight:600; color:{theme::NEGATIVE}; display:flex; align-items:center; gap:6px;",
+                            IconText { text: t.t("⚠️ Overspending").to_string(), size: 18 }
                         }
-                    }
-                }
-            }
-
-            // ── Monthly Summary ──
-            div {
-                style: "background:#fff; border-radius:12px; padding:16px; box-shadow:0 1px 3px rgba(0,0,0,.08);",
-                h2 { style: "margin:0 0 12px; font-size:15px; font-weight:600; color:#374151;", {t.t("This Month")} }
-                div {
-                    style: "display:grid; grid-template-columns:1fr 1fr; gap:10px;",
-                    SummaryRow { label: t.t("Income"),       value: fmt_vnd(s.income),       color: "#10b981" }
-                    SummaryRow { label: t.t("Expense"),      value: fmt_vnd(s.expense),      color: "#ef4444" }
-                    SummaryRow { label: t.t("Savings"),      value: fmt_vnd(s.savings),      color: "#6366f1" }
-                    SummaryRow { label: t.t("Savings Rate"), value: format!("{:.1}%", s.savings_rate), color: "#f59e0b" }
-                }
-            }
-
-            // ── Overspending Alerts ──
-            if !alerts.read().is_empty() {
-                div {
-                    style: "background:#fff; border-radius:12px; padding:16px; box-shadow:0 1px 3px rgba(0,0,0,.08);",
-                    h2 { style: "margin:0 0 10px; font-size:15px; font-weight:600; color:#ef4444;", {t.t("⚠️ Overspending")} }
-                    for alert in alerts.read().iter() {
-                        div {
-                            style: "display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid #f3f4f6;",
-                            span { style: "font-size:13px; color:#374151;", {t.tr(&alert.category_name)} }
+                        for alert in alerts.read().iter() {
                             div {
-                                style: "text-align:right;",
-                                div { style: "font-size:12px; color:#ef4444; font-weight:600;", "+{fmt_vnd(alert.overage)}" }
-                                div { style: "font-size:11px; color:#9ca3af;", "{fmt_vnd(alert.spent)} / {fmt_vnd(alert.budget)}" }
+                                style: "display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid {theme::BORDER};",
+                                span { style: "font-size:13px; color:{theme::TEXT};", {t.tr(&alert.category_name)} }
+                                div {
+                                    style: "text-align:right;",
+                                    div { style: "font-size:12px; color:{theme::NEGATIVE}; font-weight:600;", "+{fmt_vnd(alert.overage)}" }
+                                    div { style: "font-size:11px; color:{theme::TEXT_MUTED};", "{fmt_vnd(alert.spent)} / {fmt_vnd(alert.budget)}" }
+                                }
                             }
                         }
-                    }
-                }
-            }
-
-            // ── Recent Transactions ──
-            div {
-                style: "background:#fff; border-radius:12px; padding:16px; box-shadow:0 1px 3px rgba(0,0,0,.08);",
-                h2 { style: "margin:0 0 10px; font-size:15px; font-weight:600; color:#374151;", {t.t("Recent")} }
-                if recent.read().is_empty() {
-                    p { style: "font-size:13px; color:#9ca3af; text-align:center; padding:16px 0;", {t.t("No transactions yet")} }
-                }
-                for txn in recent.read().iter() {
-                    RecentTxnRow {
-                        txn: txn.clone(),
-                        // An opening balance says which wallet it started
-                        wallet_name: (txn.txn_type == crate::models::TransactionType::OpeningBalance)
-                            .then(|| wallet_names.read().get(&txn.wallet_id).cloned())
-                            .flatten(),
                     }
                 }
             }
@@ -233,61 +263,29 @@ pub fn Dashboard() -> Element {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
+/// Category with its amount, share of the month and a progress bar
 #[component]
-fn NetWorthCard(label: String, value: String, color: &'static str) -> Element {
-    rsx! {
-        div {
-            style: "background:#fff; border-radius:12px; padding:12px; box-shadow:0 1px 3px rgba(0,0,0,.08); border-top:3px solid {color};",
-            div { style: "font-size:10px; font-weight:600; color:#9ca3af; text-transform:uppercase; margin-bottom:4px;", "{label}" }
-            div { style: "font-size:13px; font-weight:700; color:#1f2937; word-break:break-all;", "{value}" }
-        }
-    }
-}
-
-#[component]
-fn SummaryRow(label: &'static str, value: String, color: &'static str) -> Element {
-    rsx! {
-        div {
-            style: "background:#f9fafb; border-radius:8px; padding:10px;",
-            div { style: "font-size:11px; color:#6b7280; margin-bottom:2px;", "{label}" }
-            div { style: "font-size:14px; font-weight:700; color:{color};", "{value}" }
-        }
-    }
-}
-
-#[component]
-fn RecentTxnRow(txn: Transaction, wallet_name: Option<String>) -> Element {
+pub fn CategoryRow(item: ExpenseByCategoryItem) -> Element {
     let t = use_i18n();
-    let (icon, color) = match txn.txn_type {
-        crate::models::TransactionType::Income    => ("↑", "#10b981"),
-        crate::models::TransactionType::Expense   => ("↓", "#ef4444"),
-        crate::models::TransactionType::Transfer  => ("⇄", "#6366f1"),
-        crate::models::TransactionType::InvestBuy  => ("📈", "#f59e0b"),
-        crate::models::TransactionType::InvestSell => ("📉", "#8b5cf6"),
-        crate::models::TransactionType::OpeningBalance => ("🏁", "#0ea5e9"),
-    };
-    let amount_str = fmt_currency(txn.amount, &txn.currency);
-    let date_str   = ts_to_date_str(txn.txn_date);
-    let title = match wallet_name {
-        Some(name) => format!("{} · {name}", t.code(&txn.txn_type.to_string())),
-        None       => t.code(&txn.txn_type.to_string()),
-    };
-
+    let pct = item.share_pct.to_f64().unwrap_or(0.0).clamp(0.0, 100.0);
+    let color = item.color.clone().unwrap_or_else(|| theme::TEXT_MUTED.to_string());
+    let bar_color: String = color.chars().take(7).collect();
     rsx! {
         div {
-            style: "display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #f3f4f6;",
-            div {
-                style: "display:flex; align-items:center; gap:10px;",
-                span {
-                    style: "width:32px; height:32px; border-radius:50%; background:#f3f4f6; display:flex; align-items:center; justify-content:center; font-size:16px;",
-                    "{icon}"
+            style: "display:flex; align-items:center; gap:12px;",
+            IconCircle { icon: item.icon.clone(), fallback: IconName::Package, color, size: 48 }
+            div { style: "flex:1; min-width:0;",
+                div { style: "display:flex; justify-content:space-between; gap:8px; align-items:baseline;",
+                    span { style: "font-size:15px; color:{theme::TEXT};", {t.tr(&item.category_name)} }
+                    span { style: "font-size:15px; color:{theme::TEXT}; white-space:nowrap;", "{fmt_vnd(item.amount)}" }
                 }
-                div {
-                    div { style: "font-size:13px; font-weight:500; color:#374151;", "{title}" }
-                    div { style: "font-size:11px; color:#9ca3af;", "{date_str}" }
+                div { style: "display:flex; align-items:center; gap:8px; margin-top:4px;",
+                    span { style: "font-size:12px; color:{theme::TEXT_MUTED}; min-width:36px;", "{pct:.0}%" }
+                    div { style: "flex:1; height:6px; background:#eeeef4; border-radius:3px; overflow:hidden;",
+                        div { style: "height:100%; width:{pct}%; background:{bar_color}; border-radius:3px;" }
+                    }
                 }
             }
-            span { style: "font-size:13px; font-weight:600; color:{color};", "{amount_str}" }
         }
     }
 }

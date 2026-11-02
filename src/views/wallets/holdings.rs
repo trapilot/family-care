@@ -5,7 +5,9 @@ use rust_decimal::Decimal;
 use crate::app::AppState;
 use crate::models::holding::AssetType;
 use crate::services::{holding_service::HoldingWithPnl, HoldingService};
-use crate::views::{fmt_currency, AmountInput};
+use crate::views::icons::{Icon, IconName};
+use crate::views::ui::IconTile;
+use crate::views::{fmt_currency, theme, AmountInput};
 use crate::models::Currency;
 
 #[component]
@@ -49,23 +51,23 @@ pub fn HoldingsView(wallet_id: String) -> Element {
 
     rsx! {
         div {
-            style: "display:flex; flex-direction:column; gap:12px;",
+            style: "display:flex; flex-direction:column; gap:16px;",
 
             // ── Portfolio summary ──
             div {
-                style: "background:linear-gradient(135deg, #1e1b4b, #312e81); border-radius:12px; padding:16px; color:#fff;",
-                div { style: "font-size:11px; opacity:.7; text-transform:uppercase; letter-spacing:.5px; margin-bottom:8px;", {t.t("Portfolio")} }
+                style: "background:{theme::PRIMARY}; border-radius:16px; padding:16px; color:#fff;",
+                div { style: "font-size:13px; opacity:.8; margin-bottom:8px;", {t.t("Portfolio")} }
                 div {
                     style: "display:grid; grid-template-columns:1fr 1fr; gap:10px;",
                     PortfolioStat {
                         label: t.t("Cost Basis"),
                         value: fmt_currency(total_cost, &Currency::VND),
-                        color: "#a5b4fc"
+                        color: "#ffffff"
                     }
                     PortfolioStat {
                         label: t.t("Market Value"),
                         value: total_mv.map(|v| fmt_currency(v, &Currency::VND)).unwrap_or("—".into()),
-                        color: "#6ee7b7"
+                        color: "#b8f0e2"
                     }
                     PortfolioStat {
                         label: t.t("Unrealized P&L"),
@@ -73,12 +75,12 @@ pub fn HoldingsView(wallet_id: String) -> Element {
                             let sign = if p >= Decimal::ZERO { "+" } else { "" };
                             format!("{sign}{}", fmt_currency(p, &Currency::VND))
                         }).unwrap_or("—".into()),
-                        color: total_pnl.map(|p| if p >= Decimal::ZERO { "#6ee7b7" } else { "#fca5a5" }).unwrap_or("#a5b4fc")
+                        color: total_pnl.map(|p| if p >= Decimal::ZERO { "#b8f0e2" } else { "#ffc2d3" }).unwrap_or("#ffffff")
                     }
                     PortfolioStat {
                         label: t.t("Holdings"),
                         value: holdings.read().len().to_string(),
-                        color: "#fde68a"
+                        color: "#ffffff"
                     }
                 }
             }
@@ -86,8 +88,8 @@ pub fn HoldingsView(wallet_id: String) -> Element {
             // ── Holdings list ──
             if holdings.read().is_empty() {
                 div {
-                    style: "text-align:center; padding:32px 0; color:#9ca3af; font-size:14px;",
-                    p { style: "font-size:28px; margin:0;", "📈" }
+                    style: "display:flex; flex-direction:column; align-items:center; padding:32px 0; color:{theme::TEXT_MUTED}; font-size:14px;",
+                    Icon { name: IconName::TrendingUp, size: 40, color: theme::TEXT_MUTED.to_string() }
                     p { style: "margin:8px 0 0;", {t.t("No holdings yet. Add a Buy transaction.")} }
                 }
             }
@@ -143,17 +145,17 @@ fn HoldingCard(
     let t = use_i18n();
     let h = &item.holding;
     let asset_color = match h.asset_type {
-        AssetType::Stock  => "#6366f1",
+        AssetType::Stock  => theme::PRIMARY,
         AssetType::Crypto => "#f59e0b",
     };
     let asset_icon = match h.asset_type {
-        AssetType::Stock  => "📊",
-        AssetType::Crypto => "🪙",
+        AssetType::Stock  => IconName::BarChart,
+        AssetType::Crypto => IconName::Coins,
     };
 
     let pnl_color = item.unrealized_pnl
-        .map(|p| if p >= Decimal::ZERO { "#10b981" } else { "#ef4444" })
-        .unwrap_or("#6b7280");
+        .map(|p| if p >= Decimal::ZERO { theme::POSITIVE } else { theme::NEGATIVE })
+        .unwrap_or(theme::TEXT_MUTED);
 
     let pnl_str = item.unrealized_pnl
         .map(|p| {
@@ -168,19 +170,16 @@ fn HoldingCard(
 
     rsx! {
         div {
-            style: "background:#fff; border-radius:12px; padding:14px; box-shadow:0 1px 3px rgba(0,0,0,.06);",
+            style: "{theme::CARD}",
 
             // ── Symbol row ──
             div {
                 style: "display:flex; align-items:center; gap:10px; margin-bottom:10px;",
-                div {
-                    style: "width:40px; height:40px; border-radius:10px; background:{asset_color}22; display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0;",
-                    "{asset_icon}"
-                }
+                IconTile { icon: None, fallback: asset_icon, color: asset_color.to_string(), size: 40, filled: false }
                 div { style: "flex:1;",
-                    div { style: "font-size:16px; font-weight:700; color:#1f2937;", "{h.symbol}" }
+                    div { style: "font-size:15px; font-weight:600; color:{theme::TEXT};", "{h.symbol}" }
                     if let Some(ref name) = h.name {
-                        div { style: "font-size:12px; color:#9ca3af;", "{name}" }
+                        div { style: "font-size:12px; color:{theme::TEXT_MUTED};", "{name}" }
                     }
                 }
                 div { style: "text-align:right;",
@@ -205,25 +204,25 @@ fn HoldingCard(
                 div {
                     style: "display:flex; gap:8px; align-items:center;",
                     AmountInput {
-                        style: "flex:1; min-width:0; border:1px solid #6366f1; border-radius:8px; padding:8px 10px; font-size:14px; outline:none;",
+                        style: "flex:1; min-width:0; box-sizing:border-box; border:1px solid #3f51b5; border-radius:12px; padding:10px 12px; font-size:14px; outline:none; color:#1f2133;",
                         placeholder: t.t("New price"),
                         value: price_input.clone(),
                         oninput: move |v| on_price_input.call(v),
                     }
                     button {
-                        style: "padding:8px 14px; background:#6366f1; color:#fff; border:none; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer;",
+                        style: "{theme::BTN_PRIMARY} padding:10px 14px; font-size:13px;",
                         onclick: move |e| { on_price_save.call(e); },
                         {t.t("Save")}
                     }
                     button {
-                        style: "padding:8px 12px; background:#f3f4f6; color:#6b7280; border:none; border-radius:8px; font-size:13px; cursor:pointer;",
+                        style: "{theme::BTN_SECONDARY} padding:10px 12px; font-size:13px; display:flex; align-items:center;",
                         onclick: move |e| { on_price_cancel.call(e); },
-                        "✕"
+                        Icon { name: IconName::X, size: 16 }
                     }
                 }
             } else {
                 button {
-                    style: "width:100%; padding:8px; border:1px dashed #d1d5db; border-radius:8px; background:transparent; color:#6b7280; font-size:13px; cursor:pointer;",
+                    style: "width:100%; padding:10px; border:1px dashed #e6e6ef; border-radius:12px; background:transparent; color:#8a8d9f; font-size:13px; cursor:pointer;",
                     onclick: move |e| { on_edit_price.call(e); },
                     {t.t("Update last price")}
                 }
@@ -237,7 +236,7 @@ fn PortfolioStat(label: &'static str, value: String, color: &'static str) -> Ele
     rsx! {
         div {
             div { style: "font-size:10px; opacity:.7; margin-bottom:2px;", "{label}" }
-            div { style: "font-size:13px; font-weight:700; color:{color};", "{value}" }
+            div { style: "font-size:14px; font-weight:600; color:{color};", "{value}" }
         }
     }
 }
@@ -246,9 +245,9 @@ fn PortfolioStat(label: &'static str, value: String, color: &'static str) -> Ele
 fn StatCell(label: &'static str, value: String) -> Element {
     rsx! {
         div {
-            style: "background:#f9fafb; border-radius:6px; padding:6px 8px;",
-            div { style: "font-size:10px; color:#9ca3af; margin-bottom:1px;", "{label}" }
-            div { style: "font-size:12px; font-weight:600; color:#374151;", "{value}" }
+            style: "background:{theme::BG}; border-radius:10px; padding:6px 8px;",
+            div { style: "font-size:10px; color:{theme::TEXT_MUTED}; margin-bottom:1px;", "{label}" }
+            div { style: "font-size:12px; font-weight:600; color:{theme::TEXT};", "{value}" }
         }
     }
 }

@@ -7,13 +7,10 @@ use crate::models::member::{Gender, MemberRole};
 use crate::repository::{FamilyRepo, IdCardRepo, MemberRepo};
 use crate::views::date_str_to_ts;
 use super::id_cards::{save_photos, IdPhotoFields};
+use crate::views::theme;
+use crate::views::icons::{Icon, IconName};
+use crate::views::ui::{IconText, InitialsAvatar, ScreenHeader};
 use super::MemberView;
-
-const AVATAR_PRESETS: &[&str] = &[
-    "👨","👩","👦","👧","🧑","👴","👵","🧒",
-    "🧔","👱","🧑‍💼","👩‍💼","🧑‍🎓","👩‍🎓",
-    "🧑‍🍳","👩‍🍳","🧑‍🔬","🧑‍🌾",
-];
 
 #[component]
 pub fn MemberForm(view: Signal<MemberView>, editing: Option<Member>) -> Element {
@@ -21,11 +18,12 @@ pub fn MemberForm(view: Signal<MemberView>, editing: Option<Member>) -> Element 
     let state = use_context::<AppState>();
     let families = use_signal(|| vec![]);
 
+    let editing_id = editing.as_ref().map(|m| m.id.clone()).unwrap_or_else(|| "new".to_string());
     let mut full_name      = use_signal(|| editing.as_ref().map(|m| m.full_name.clone()).unwrap_or_default());
     let mut family_id      = use_signal(|| editing.as_ref().and_then(|m| m.family_id.clone()));
     let mut role           = use_signal(|| editing.as_ref().map(|m| m.role.clone()).unwrap_or(MemberRole::Member));
     let mut gender         = use_signal(|| editing.as_ref().and_then(|m| m.gender.clone()));
-    let mut avatar_emoji   = use_signal(|| editing.as_ref().and_then(|m| m.avatar_emoji.clone()).unwrap_or_default());
+    let avatar_emoji       = use_signal(|| editing.as_ref().and_then(|m| m.avatar_emoji.clone()).unwrap_or_default());
     let mut phone          = use_signal(|| editing.as_ref().and_then(|m| m.phone.clone()).unwrap_or_default());
     let mut address        = use_signal(|| editing.as_ref().and_then(|m| m.address.clone()).unwrap_or_default());
     let mut birth_date     = use_signal(|| date_from_ts(editing.as_ref().and_then(|m| m.birth_date)));
@@ -108,56 +106,18 @@ pub fn MemberForm(view: Signal<MemberView>, editing: Option<Member>) -> Element 
         }
     };
 
-    // "{if avatar_emoji.read().is_empty() { \"🧑\".to_string() } else { avatar_emoji.read().clone() }}"
-    
-    let avatar_icon = if avatar_emoji.read().is_empty() { 
-        "🧑" 
-    } else { 
-        &avatar_emoji.read().clone().to_string()
-    };
-
     rsx! {
+        ScreenHeader { title: title, on_back: move |_| { view.set(MemberView::List); } }
         div {
-            style: "padding:16px; display:flex; flex-direction:column; gap:14px; padding-bottom:40px;",
+            style: "padding:16px; display:flex; flex-direction:column; gap:16px; padding-bottom:40px;",
 
-            // ── Header ──
+            // ── Avatar preview (initials, follows the name input) ──
             div {
-                style: "display:flex; align-items:center; gap:12px;",
-                button {
-                    style: "border:none; background:transparent; font-size:22px; cursor:pointer; padding:0;",
-                    onclick: move |_| { view.set(MemberView::List); },
-                    "←"
-                }
-                h1 { style: "margin:0; font-size:18px; font-weight:700; color:#1f2937;", "{title}" }
-            }
-
-            // ── Avatar picker ──
-            Label { text: t.t("Avatar") }
-            div {
-                style: "display:flex; align-items:center; gap:12px; margin-bottom:4px;",
-                div {
-                    style: "width:58px; height:58px; border-radius:50%; background:#eef2ff; display:flex; align-items:center; justify-content:center; font-size:32px; border:2px solid #c7d2fe;",
-                    {avatar_icon}
-                }
-            }
-            div {
-                style: "display:flex; flex-wrap:wrap; gap:8px;",
-                for emoji in AVATAR_PRESETS.iter() {
-                    {
-                        let e = emoji.to_string();
-                        let is_sel = *avatar_emoji.read() == *emoji;
-                        rsx! {
-                            button {
-                                style: if is_sel {
-                                    "width:42px; height:42px; border:2px solid #6366f1; border-radius:10px; background:#eef2ff; font-size:22px; cursor:pointer;"
-                                } else {
-                                    "width:42px; height:42px; border:1px solid #e5e7eb; border-radius:10px; background:#fff; font-size:22px; cursor:pointer;"
-                                },
-                                onclick: move |_| { avatar_emoji.set(e.clone()); },
-                                "{emoji}"
-                            }
-                        }
-                    }
+                style: "display:flex; justify-content:center;",
+                InitialsAvatar {
+                    name: full_name.read().clone(),
+                    seed: editing_id.clone(),
+                    size: 64,
                 }
             }
 
@@ -170,7 +130,7 @@ pub fn MemberForm(view: Signal<MemberView>, editing: Option<Member>) -> Element 
             div {
                 style: "display:flex; flex-direction:column; gap:6px;",
                 select {
-                    style: "border:1px solid #e5e7eb; border-radius:8px; padding:10px 12px; font-size:15px; outline:none; background:#fff; width:100%; box-sizing:border-box;",
+                    style: "{theme::INPUT}",
                     oninput: move |e| {
                         let val = e.value();
                         if val.is_empty() {
@@ -198,19 +158,20 @@ pub fn MemberForm(view: Signal<MemberView>, editing: Option<Member>) -> Element 
             Label { text: t.t("Role") }
             div {
                 style: "display:flex; gap:8px;",
-                for (r, label, icon) in [(MemberRole::Owner,t.t("Owner"),"👑"),(MemberRole::Member,t.t("Member"),"👤")] {
+                for (r, label, icon) in [(MemberRole::Owner,t.t("Owner"),IconName::Crown),(MemberRole::Member,t.t("Member"),IconName::User)] {
                     {
                         let rc = r.clone();
                         let is_sel = *role.read() == r;
                         rsx! {
                             button {
                                 style: if is_sel {
-                                    "flex:1; padding:10px; border:2px solid #6366f1; border-radius:10px; background:#eef2ff; color:#6366f1; font-size:13px; font-weight:700; cursor:pointer;"
+                                    "flex:1; padding:10px 14px; border:1px solid #e2e5f7; border-radius:999px; background:#e2e5f7; color:#3f51b5; font-size:14px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;"
                                 } else {
-                                    "flex:1; padding:10px; border:1px solid #e5e7eb; border-radius:10px; background:#fff; color:#6b7280; font-size:13px; cursor:pointer;"
+                                    "flex:1; padding:10px 14px; border:1px solid #e6e6ef; border-radius:999px; background:transparent; color:#8a8d9f; font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;"
                                 },
                                 onclick: move |_| { role.set(rc.clone()); },
-                                "{icon} {label}"
+                                Icon { name: icon, size: 16 }
+                                "{label}"
                             }
                         }
                     }
@@ -228,9 +189,9 @@ pub fn MemberForm(view: Signal<MemberView>, editing: Option<Member>) -> Element 
                         rsx! {
                             button {
                                 style: if is_sel {
-                                    "flex:1; padding:9px; border:none; border-radius:8px; background:#6366f1; color:#fff; font-size:13px; font-weight:600; cursor:pointer;"
+                                    "flex:1; padding:10px 14px; border:1px solid #e2e5f7; border-radius:999px; background:#e2e5f7; color:#3f51b5; font-size:14px; font-weight:600; cursor:pointer;"
                                 } else {
-                                    "flex:1; padding:9px; border:1px solid #e5e7eb; border-radius:8px; background:#fff; color:#6b7280; font-size:13px; cursor:pointer;"
+                                    "flex:1; padding:10px 14px; border:1px solid #e6e6ef; border-radius:999px; background:transparent; color:#8a8d9f; font-size:14px; cursor:pointer;"
                                 },
                                 onclick: move |_| { gender.set(gc.clone()); },
                                 "{label}"
@@ -249,20 +210,20 @@ pub fn MemberForm(view: Signal<MemberView>, editing: Option<Member>) -> Element 
             div {
                 style: "position:relative;",
                 textarea {
-                    style: "width:100%; border:1px solid #e5e7eb; border-radius:8px; padding:10px 12px; font-size:14px; outline:none; background:#fff; resize:none; height:72px; box-sizing:border-box; font-family:inherit;",
+                    style: "{theme::INPUT} resize:none; height:72px; font-family:inherit;",
                     placeholder: "",
                     value: "{address.read()}",
                     oninput: move |e| { address.set(e.value()); },
                 }
             }
-            div { style: "font-size:11px; color:#9ca3af; margin-top:-8px;",
-                {t.t("💡 This is the address you will copy when ordering a ride to this person's house.")}
+            div { style: "font-size:12px; color:{theme::TEXT_MUTED}; margin-top:-8px;",
+                IconText { text: t.t("💡 This is the address you will copy when ordering a ride to this person's house.").to_string(), size: 14, color: theme::TEXT_MUTED.to_string() }
             }
 
             // ── Date of birth ──
             Label { text: t.t("Date of Birth") }
             input {
-                style: "border:1px solid #e5e7eb; border-radius:8px; padding:10px 12px; font-size:14px; outline:none; background:#fff;",
+                style: "{theme::INPUT}",
                 r#type: "date",
                 value: "{birth_date.read()}",
                 oninput: move |e| { birth_date.set(e.value()); },
@@ -270,20 +231,24 @@ pub fn MemberForm(view: Signal<MemberView>, editing: Option<Member>) -> Element 
 
             // ── Identity (collapsible) ──
             button {
-                style: "text-align:left; border:none; background:transparent; padding:4px 0; font-size:13px; font-weight:600; color:#6366f1; cursor:pointer;",
+                style: "text-align:left; border:none; background:transparent; padding:4px 0; font-size:14px; font-weight:600; color:{theme::PRIMARY}; cursor:pointer; display:flex; align-items:center; gap:6px;",
                 onclick: move |_| show_id.toggle(),
-                if *show_id.read() { {t.t("▼ Identity Document (CCCD/CMND)")} }
-                else               { {t.t("▶ Identity Document (CCCD/CMND)")} }
+                if *show_id.read() {
+                    Icon { name: IconName::ChevronDown, size: 16 }
+                } else {
+                    Icon { name: IconName::ChevronRight, size: 16 }
+                }
+                {t.t("▼ Identity Document (CCCD/CMND)").trim_start_matches(['▼', '▶']).trim().to_string()}
             }
 
             if *show_id.read() {
                 div {
-                    style: "background:#f9fafb; border-radius:10px; padding:14px; display:flex; flex-direction:column; gap:12px;",
+                    style: "background:{theme::BG}; border-radius:16px; padding:14px; display:flex; flex-direction:column; gap:12px;",
                     Label { text: t.t("ID Number") }
                     TextInput { value: id_number.read().clone(), placeholder: "", on_input: move |v| { id_number.set(v); } }
                     Label { text: t.t("Issue Date") }
                     input {
-                        style: "border:1px solid #e5e7eb; border-radius:8px; padding:10px 12px; font-size:14px; outline:none; background:#fff;",
+                        style: "{theme::INPUT}",
                         r#type: "date",
                         value: "{id_issue_date.read()}",
                         oninput: move |e| { id_issue_date.set(e.value()); },
@@ -302,13 +267,13 @@ pub fn MemberForm(view: Signal<MemberView>, editing: Option<Member>) -> Element 
             // ── Error ──
             if !error_msg.read().is_empty() {
                 div {
-                    style: "background:#fef2f2; border-radius:8px; padding:10px 12px; font-size:13px; color:#ef4444;",
+                    style: "background:{theme::NEGATIVE_SOFT}; border-radius:12px; padding:10px 12px; font-size:13px; color:{theme::DANGER};",
                     "{error_msg.read()}"
                 }
             }
 
             button {
-                style: "padding:14px; background:#6366f1; color:#fff; border:none; border-radius:12px; font-size:16px; font-weight:700; cursor:pointer;",
+                style: "{theme::BTN_PRIMARY}",
                 onclick: submit,
                 if editing.is_some() { {t.t("Update Member")} } else { {t.t("Add Member")} }
             }
@@ -335,7 +300,7 @@ fn date_from_ts(ts: Option<i64>) -> String {
 fn Label(text: &'static str) -> Element {
     rsx! {
         label {
-            style: "font-size:12px; font-weight:600; color:#374151; text-transform:uppercase; letter-spacing:.5px;",
+            style: "{theme::LABEL} margin:4px 0 -8px;",
             "{text}"
         }
     }
@@ -345,7 +310,7 @@ fn Label(text: &'static str) -> Element {
 fn TextInput(value: String, placeholder: &'static str, on_input: EventHandler<String>) -> Element {
     rsx! {
         input {
-            style: "border:1px solid #e5e7eb; border-radius:8px; padding:10px 12px; font-size:15px; outline:none; background:#fff; width:100%; box-sizing:border-box;",
+            style: "{theme::INPUT}",
             r#type: "text",
             placeholder,
             value: "{value}",

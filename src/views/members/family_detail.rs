@@ -3,6 +3,9 @@ use crate::i18n::use_i18n;
 use crate::app::AppState;
 use crate::models::{Family, Member};
 use crate::repository::MemberRepo;
+use crate::views::icons::{Icon, IconName};
+use crate::views::theme;
+use crate::views::ui::{HeaderAction, InitialsAvatar, ScreenHeader, SectionTitle};
 use super::MemberView;
 
 #[component]
@@ -25,40 +28,34 @@ pub fn FamilyDetail(view: Signal<MemberView>, family: Family) -> Element {
 
     let common_address_clone = family.common_address.clone();
 
-    rsx! {
-        div {
-            style: "padding:16px; display:flex; flex-direction:column; gap:14px;",
+    let family_for_edit = family.clone();
 
-            // Header
-            div {
-                style: "display:flex; align-items:center; gap:12px;",
-                button {
-                    style: "background:transparent; border:none; font-size:20px; cursor:pointer; color:#6b7280;",
-                    onclick: move |_| { view.set(MemberView::List); },
-                    "‹"
+    rsx! {
+        ScreenHeader {
+            title: family.name.clone(),
+            on_back: move |_| { view.set(MemberView::List); },
+            action: rsx! {
+                HeaderAction {
+                    icon: IconName::Pencil,
+                    label: t.t("Edit"),
+                    onclick: move |_| { view.set(MemberView::EditFamily(family_for_edit.clone())); },
                 }
-                h1 { style: "margin:0; font-size:20px; font-weight:700; color:#1f2937;", "{family.name}" }
-                button {
-                    style: "background:#f3f4f6; color:#374151; border:none; border-radius:12px; padding:8px 12px; font-size:14px; font-weight:600; cursor:pointer; margin-left:auto;",
-                    onclick: {
-                        let family = family.clone();
-                        move |_| { view.set(MemberView::EditFamily(family.clone())); }
-                    },
-                    {t.t("Edit")}
-                }
-            }
+            },
+        }
+        div {
+            style: "padding:16px; display:flex; flex-direction:column; gap:16px;",
 
             // Common address
             if let Some(addr) = common_address_clone {
                 div {
-                    style: "background:#fff; border-radius:14px; padding:14px; box-shadow:0 1px 4px rgba(0,0,0,.07);",
+                    style: "{theme::CARD}",
                     div { style: "display:flex; align-items:center; justify-content:space-between; gap:8px;",
-                        div { style: "display:flex; flex-direction:column; gap:4px;",
-                            div { style: "font-size:12px; font-weight:600; color:#6b7280;", {t.t("Common Address")} }
-                            div { style: "font-size:14px; color:#1f2937;", "{addr}" }
+                        div { style: "display:flex; flex-direction:column; gap:4px; min-width:0;",
+                            div { style: "{theme::LABEL} margin:0;", {t.t("Common Address")} }
+                            div { style: "font-size:14px; color:{theme::TEXT};", "{addr}" }
                         }
                         button {
-                            style: "background:#eef2ff; color:#6366f1; border:none; border-radius:8px; padding:8px 12px; font-size:12px; font-weight:600; cursor:pointer;",
+                            style: "{theme::BTN_SECONDARY} padding:8px 14px; font-size:13px; border-radius:999px; flex-shrink:0;",
                             onclick: {
                                 let addr = addr.clone();
                                 move |_| {
@@ -75,17 +72,17 @@ pub fn FamilyDetail(view: Signal<MemberView>, family: Family) -> Element {
             // Note
             if let Some(note) = &family.note {
                 div {
-                    style: "background:#fff; border-radius:14px; padding:14px; box-shadow:0 1px 4px rgba(0,0,0,.07);",
-                    div { style: "font-size:12px; font-weight:600; color:#6b7280; margin-bottom:6px;", {t.t("Note")} }
-                    div { style: "font-size:14px; color:#1f2937;", "{note}" }
+                    style: "{theme::CARD}",
+                    div { style: "{theme::LABEL}", {t.t("Note")} }
+                    div { style: "font-size:14px; color:{theme::TEXT};", "{note}" }
                 }
             }
 
             // Members section
             if !members.read().is_empty() {
+                SectionTitle { title: t.t("Members").to_string() }
                 div {
-                    style: "display:flex; flex-direction:column; gap:8px;",
-                    div { style: "font-size:11px; font-weight:700; color:#9ca3af; text-transform:uppercase; letter-spacing:.6px; padding:0 2px;", {t.t("Members")} }
+                    style: "{theme::CARD} padding:0 16px;",
                     for m in members.read().iter() {
                         MemberRow { member: m.clone(), view }
                     }
@@ -108,42 +105,35 @@ fn MemberRow(member: Member, view: Signal<MemberView>) -> Element {
 
     rsx! {
         div {
-            style: "background:#fff; border-radius:14px; padding:14px; box-shadow:0 1px 4px rgba(0,0,0,.07); display:flex; flex-direction:column; gap:8px; cursor:pointer;",
+            style: "display:flex; align-items:center; gap:12px; padding:12px 0; cursor:pointer; {theme::ROW_DIVIDER}",
             onclick: {
                 let m = member.clone();
                 move |_| { view.set(MemberView::Detail(m.clone())); }
             },
-
-            div {
-                style: "display:flex; align-items:center; gap:12px;",
+            InitialsAvatar { name: member.full_name.clone(), seed: member.id.clone(), size: 44 }
+            div { style: "flex:1; min-width:0;",
                 div {
-                    style: "width:40px; height:40px; border-radius:50%; background:#eef2ff; display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0;",
-                    "{member.avatar()}"
-                }
-                div { style: "flex:1;",
-                    div {
-                        style: "display:flex; align-items:center; gap:6px; margin-bottom:2px;",
-                        span { style: "font-size:14px; font-weight:700; color:#1f2937;", "{member.full_name}" }
-                        if member.role == crate::models::member::MemberRole::Owner {
-                            span {
-                                style: "font-size:9px; font-weight:700; background:#fef3c7; color:#d97706; border-radius:4px; padding:1px 5px;",
-                                {t.t("OWNER")}
-                            }
+                    style: "display:flex; align-items:center; gap:6px;",
+                    span { style: "font-size:15px; color:{theme::TEXT};", "{member.full_name}" }
+                    if member.role == crate::models::member::MemberRole::Owner {
+                        span {
+                            style: "font-size:10px; font-weight:700; background:#fef3c7; color:#d97706; border-radius:999px; padding:2px 8px;",
+                            {t.t("OWNER")}
                         }
                     }
-                    if let Some(phone) = &member.phone {
-                        div { style: "font-size:12px; color:#6b7280;", "📞 {phone}" }
-                    }
                 }
-                if member.address.is_some() {
-                    button {
-                        style: "background:#f3f4f6; color:#6b7280; border:none; border-radius:8px; padding:6px 10px; font-size:11px; font-weight:600; cursor:pointer; flex-shrink:0;",
-                        onclick: copy_address,
-                        {t.t("Copy Address")}
-                    }
+                if let Some(phone) = &member.phone {
+                    div { style: "font-size:13px; color:{theme::TEXT_MUTED};", "{phone}" }
                 }
-                span { style: "color:#d1d5db; font-size:18px; flex-shrink:0;", "›" }
             }
+            if member.address.is_some() {
+                button {
+                    style: "background:{theme::PRIMARY_SOFT}; color:{theme::PRIMARY}; border:none; border-radius:999px; padding:6px 12px; font-size:12px; font-weight:600; cursor:pointer; flex-shrink:0;",
+                    onclick: copy_address,
+                    {t.t("Copy Address")}
+                }
+            }
+            Icon { name: IconName::ChevronRight, size: 20, color: theme::TEXT_MUTED.to_string() }
         }
     }
 }

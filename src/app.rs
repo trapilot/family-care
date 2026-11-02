@@ -4,6 +4,8 @@ use std::sync::{Arc, Mutex};
 
 use crate::i18n::{use_i18n, I18n, Lang};
 use crate::views::{
+    icons::{Icon, IconName},
+    theme,
     dashboard::Dashboard,
     reports::Reports,
     members::Members,
@@ -37,6 +39,10 @@ impl AppState {
         f(&conn)
     }
 }
+
+/// Month shown by Overview, Transactions and Reports, shared between them
+#[derive(Clone, Copy)]
+pub struct SelectedMonth(pub Signal<(i32, u32)>);
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 
@@ -127,6 +133,8 @@ pub fn App() -> Element {
 #[component]
 fn MainApp() -> Element {
     let active_tab = use_signal(|| Tab::Dashboard);
+    let selected_month = use_signal(crate::views::current_month);
+    use_context_provider(|| SelectedMonth(selected_month));
     crate::views::rates::use_rates_provider();
 
     // Once per launch: ask to show notifications and re-schedule the next 14 days
@@ -139,9 +147,9 @@ fn MainApp() -> Element {
     rsx! {
         div {
             // Pinned to the screen edges: content scrolls, tab bar stays at the bottom
-            style: "position:fixed; top:0; right:0; bottom:0; left:0; display:flex; flex-direction:column; padding-top:env(safe-area-inset-top); padding-left:env(safe-area-inset-left); padding-right:env(safe-area-inset-right); font-family:inherit; background:#f5f5f5;",
+            style: "position:fixed; top:0; right:0; bottom:0; left:0; display:flex; flex-direction:column; padding-top:env(safe-area-inset-top); padding-left:env(safe-area-inset-left); padding-right:env(safe-area-inset-right); font-family:inherit; background:{theme::BG};",
             div {
-                style: "position:relative; flex:1 1 auto; min-height:0; overflow-y:auto; overscroll-behavior:contain; -webkit-overflow-scrolling:touch;",
+                style: "position:relative; flex:1 1 auto; min-height:0; overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain; -webkit-overflow-scrolling:touch;",
                 match *active_tab.read() {
                     Tab::Dashboard    => rsx! { Dashboard {} },
                     Tab::Transactions => rsx! { Transactions {} },
@@ -162,32 +170,36 @@ fn MainApp() -> Element {
 #[component]
 fn BottomTabBar(active_tab: Signal<Tab>) -> Element {
     let t = use_i18n();
-    let tabs: &[(Tab, &str, &str)] = &[
-        (Tab::Dashboard,    "🏠", "Overview"),
-        (Tab::Transactions, "💳", "Txns"),
-        (Tab::Wallets,      "👛", "Wallets"),
-        (Tab::Members,      "👨‍👩‍👧", "Family"),
-        (Tab::Reports,      "📊", "Reports"),
-        (Tab::Statements,   "🧾", "Statements"),
-        (Tab::Settings,     "⚙️",  "Settings"),
+    let tabs: &[(Tab, IconName, &str)] = &[
+        (Tab::Dashboard,    IconName::Home,     "Overview"),
+        (Tab::Transactions, IconName::Receipt,  "Txns"),
+        (Tab::Wallets,      IconName::Wallet,   "Wallets"),
+        (Tab::Members,      IconName::Users,    "Family"),
+        (Tab::Reports,      IconName::BarChart, "Reports"),
+        (Tab::Statements,   IconName::FileText, "Statements"),
+        (Tab::Settings,     IconName::Settings, "Settings"),
     ];
 
     rsx! {
         div {
-            style: "display:flex; flex-shrink:0; background:#fff; border-top:1px solid #e0e0e0; padding:8px 0 calc(12px + env(safe-area-inset-bottom));",
+            style: "display:flex; flex-shrink:0; background:{theme::HEADER_BG}; padding:6px 0 calc(8px + env(safe-area-inset-bottom));",
             for (tab, icon, label) in tabs.iter().cloned() {
                 {
                     let is_active = *active_tab.read() == tab;
                     let tab_clone = tab.clone();
+                    let pill_bg = if is_active { theme::PRIMARY_SOFT } else { "transparent" };
                     rsx! {
                         button {
                             // min-width:0 + overflow:hidden keep all 7 tabs inside the screen width
                             style: "flex:1 1 0; min-width:0; overflow:hidden; border:none; background:transparent; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:2px; padding:4px 0;",
                             onclick: move |_| { active_tab.set(tab_clone.clone()); },
-                            span { style: "font-size:20px; line-height:1; white-space:nowrap;", "{icon}" }
                             span {
-                                style: if is_active { "max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:9px; font-weight:700; color:#6366f1;" }
-                                       else { "max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:9px; color:#9ca3af;" },
+                                style: "width:44px; height:28px; border-radius:0; background:{pill_bg}; display:flex; align-items:center; justify-content:center;",
+                                Icon { name: icon, size: 22, color: theme::TEXT.to_string() }
+                            }
+                            span {
+                                style: if is_active { "max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:10px; font-weight:700; color:#1f2133;" }
+                                       else { "max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:10px; font-weight:500; color:#8a8d9f;" },
                                 {t.t(label)}
                             }
                         }

@@ -5,6 +5,8 @@ use crate::app::AppState;
 use crate::error::AppError;
 use crate::models::{Currency, CurrencyInfo};
 use crate::repository::CurrencyRepo;
+use crate::views::icons::{Icon, IconName};
+use crate::views::theme;
 
 // ─── Money types ──────────────────────────────────────────────────────────────
 
@@ -67,14 +69,14 @@ pub fn CurrenciesSettings() -> Element {
 
             // ── Header ──
             div {
-                h2 { style: "margin:0; font-size:16px; font-weight:700; color:#1f2937;", {t.t("Money types")} }
-                p { style: "margin:4px 0 0; font-size:12px; color:#6b7280; line-height:1.4;",
+                h2 { style: "{theme::SECTION_TITLE}", {t.t("Money types")} }
+                p { style: "margin:4px 0 0; font-size:13px; color:{theme::TEXT_MUTED}; line-height:1.4;",
                     {t.t("Money types every wallet can hold. Hidden types are left out of pickers.")}
                 }
             }
 
             div {
-                style: "background:#fff; border-radius:12px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,.06);",
+                style: "background:#fff; border-radius:16px; overflow:hidden;",
                 for (i, info) in items.iter().enumerate() {
                     {
                         let code = info.code.clone();
@@ -86,24 +88,24 @@ pub fn CurrenciesSettings() -> Element {
                         rsx! {
                             div {
                                 key: "{code}",
-                                style: "padding:12px 14px; border-bottom:1px solid #f3f4f6; display:flex; flex-direction:column; gap:8px;",
+                                style: "padding:12px 14px; {theme::ROW_DIVIDER} display:flex; flex-direction:column; gap:8px;",
 
                                 if is_editing {
                                     // ── Inline edit ──
                                     div { style: "display:flex; gap:6px; align-items:center;",
                                         span {
-                                            style: "font-size:11px; font-weight:700; color:#4f46e5; background:#eef2ff; border-radius:6px; padding:3px 7px; flex-shrink:0;",
+                                            style: "font-size:11px; font-weight:700; color:{theme::PRIMARY}; background:{theme::PRIMARY_SOFT}; border-radius:6px; padding:3px 7px; flex-shrink:0;",
                                             "{code}"
                                         }
                                         input {
-                                            style: "flex:1; min-width:0; border:1px solid #6366f1; border-radius:8px; padding:8px 10px; font-size:14px; outline:none;",
+                                            style: "{theme::INPUT} flex:1; min-width:0; width:auto; padding:8px 10px; font-size:14px;",
                                             r#type: "text",
                                             placeholder: t.t("Name"),
                                             value: "{name.read()}",
                                             oninput: move |e| name.set(e.value()),
                                         }
                                         input {
-                                            style: "width:64px; border:1px solid #6366f1; border-radius:8px; padding:8px 10px; font-size:14px; outline:none;",
+                                            style: "{theme::INPUT} width:64px; padding:8px 10px; font-size:14px;",
                                             r#type: "text",
                                             placeholder: t.t("Unit"),
                                             value: "{unit.read()}",
@@ -112,7 +114,7 @@ pub fn CurrenciesSettings() -> Element {
                                     }
                                     div { style: "display:flex; gap:6px; justify-content:flex-end;",
                                         button {
-                                            style: "padding:7px 14px; background:#6366f1; color:#fff; border:none; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer;",
+                                            style: "padding:7px 14px; background:{theme::PRIMARY}; color:#fff; border:none; border-radius:999px; font-size:13px; font-weight:600; cursor:pointer;",
                                             onclick: {
                                                 let mut apply = apply.clone();
                                                 let info = info.clone();
@@ -129,24 +131,24 @@ pub fn CurrenciesSettings() -> Element {
                                             {t.t("Save")}
                                         }
                                         button {
-                                            style: "padding:7px 10px; background:#f3f4f6; color:#6b7280; border:none; border-radius:8px; font-size:13px; cursor:pointer;",
+                                            style: "padding:7px 10px; background:{theme::BG}; border:none; border-radius:999px; cursor:pointer; display:flex; align-items:center;",
                                             onclick: move |_| { editing.set(None); error.set(None); },
-                                            "✕"
+                                            Icon { name: IconName::X, size: 16, color: theme::TEXT_MUTED.to_string() }
                                         }
                                     }
                                 } else {
                                     // ── Row ──
                                     div { style: "display:flex; gap:10px; align-items:center;",
                                         span {
-                                            style: "font-size:11px; font-weight:700; color:#4f46e5; background:#eef2ff; border-radius:6px; padding:3px 7px; flex-shrink:0;",
+                                            style: "font-size:11px; font-weight:700; color:{theme::PRIMARY}; background:{theme::PRIMARY_SOFT}; border-radius:6px; padding:3px 7px; flex-shrink:0;",
                                             "{code}"
                                         }
                                         div { style: if info.is_active { "flex:1; min-width:0;" } else { "flex:1; min-width:0; opacity:.55;" },
-                                            div { style: "font-size:14px; font-weight:600; color:#1f2937; overflow-wrap:anywhere;", "{display_name}" }
-                                            div { style: "font-size:12px; color:#9ca3af;", "{t.t(\"Unit\")}: {info.unit} · {status}" }
+                                            div { style: "font-size:15px; font-weight:600; color:{theme::TEXT}; overflow-wrap:anywhere;", "{display_name}" }
+                                            div { style: "font-size:13px; color:{theme::TEXT_MUTED};", "{t.t(\"Unit\")}: {info.unit} · {status}" }
                                         }
                                         button {
-                                            style: "border:none; background:transparent; font-size:16px; padding:4px; cursor:pointer;",
+                                            style: "border:none; background:transparent; font-size:15px; padding:4px; cursor:pointer; color:{theme::TEXT_MUTED};",
                                             disabled: i == 0,
                                             onclick: {
                                                 let mut apply = apply.clone();
@@ -157,10 +159,10 @@ pub fn CurrenciesSettings() -> Element {
                                                     apply(code.clone(), &|conn| CurrencyRepo::reorder(conn, &order));
                                                 }
                                             },
-                                            "↑"
+                                            Icon { name: IconName::ChevronUp, size: 16 }
                                         }
                                         button {
-                                            style: "border:none; background:transparent; font-size:16px; padding:4px; cursor:pointer;",
+                                            style: "border:none; background:transparent; font-size:15px; padding:4px; cursor:pointer; color:{theme::TEXT_MUTED};",
                                             disabled: i == last,
                                             onclick: {
                                                 let mut apply = apply.clone();
@@ -171,13 +173,13 @@ pub fn CurrenciesSettings() -> Element {
                                                     apply(code.clone(), &|conn| CurrencyRepo::reorder(conn, &order));
                                                 }
                                             },
-                                            "↓"
+                                            Icon { name: IconName::ChevronDown, size: 16 }
                                         }
                                         button {
                                             style: if info.is_active {
-                                                "padding:5px 10px; border:none; border-radius:14px; background:#d1fae5; color:#047857; font-size:12px; font-weight:600; cursor:pointer;"
+                                                "padding:5px 10px; border:none; border-radius:999px; background:{theme::POSITIVE_SOFT}; color:{theme::POSITIVE}; font-size:12px; font-weight:600; cursor:pointer;"
                                             } else {
-                                                "padding:5px 10px; border:none; border-radius:14px; background:#f3f4f6; color:#6b7280; font-size:12px; font-weight:600; cursor:pointer;"
+                                                "padding:5px 10px; border:none; border-radius:999px; background:{theme::BG}; color:{theme::TEXT_MUTED}; font-size:12px; font-weight:600; cursor:pointer;"
                                             },
                                             onclick: {
                                                 let mut apply = apply.clone();
@@ -192,7 +194,7 @@ pub fn CurrenciesSettings() -> Element {
                                             "{status}"
                                         }
                                         button {
-                                            style: "border:none; background:transparent; font-size:16px; cursor:pointer; padding:4px;",
+                                            style: "border:none; background:transparent; cursor:pointer; padding:4px; display:flex;",
                                             onclick: {
                                                 let info = info.clone();
                                                 move |_| {
@@ -202,13 +204,13 @@ pub fn CurrenciesSettings() -> Element {
                                                     editing.set(Some(info.code.clone()));
                                                 }
                                             },
-                                            "✏️"
+                                            Icon { name: IconName::Pencil, size: 20, color: theme::TEXT_MUTED.to_string() }
                                         }
                                     }
                                 }
 
                                 if let Some(msg) = row_error {
-                                    div { style: "font-size:11px; color:#ef4444;", "{msg}" }
+                                    div { style: "font-size:12px; color:{theme::DANGER};", "{msg}" }
                                 }
                             }
                         }

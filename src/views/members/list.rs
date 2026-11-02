@@ -4,6 +4,9 @@ use crate::i18n::use_i18n;
 use crate::app::AppState;
 use crate::models::{member::MemberRole, Family, Member};
 use crate::repository::{FamilyRepo, MemberRepo};
+use crate::views::icons::{Icon, IconName};
+use crate::views::theme;
+use crate::views::ui::{HeaderAction, IconCircle, InitialsAvatar, ScreenHeader, SectionTitle};
 use super::MemberView;
 
 #[component]
@@ -29,30 +32,33 @@ pub fn MemberList(view: Signal<MemberView>) -> Element {
     });
 
     rsx! {
-        div {
-            style: "padding:16px; display:flex; flex-direction:column; gap:14px;",
-
-            // ── Header ──
-            div {
-                style: "display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap: wrap;",
-                h1 { style: "margin:0; font-size:20px; font-weight:700; color:#1f2937;", {t.t("Families & Members")} }
-                div { style: "display:flex; gap:8px;",
-                    button {
-                        style: "background:#6366f1; color:#fff; border:none; border-radius:20px; padding:8px 16px; font-size:14px; font-weight:600; cursor:pointer; white-space:nowrap;",
-                        onclick: move |_| { view.set(MemberView::AddFamily); },
-                        {t.t("+ Add Family")}
-                    }
-                    button {
-                        style: "background:#10b981; color:#fff; border:none; border-radius:20px; padding:8px 16px; font-size:14px; font-weight:600; cursor:pointer; white-space:nowrap;",
-                        onclick: move |_| { view.set(MemberView::Add); },
-                        {t.t("+ Add Member")}
-                    }
+        ScreenHeader {
+            title: t.t("Families & Members"),
+            action: rsx! {
+                HeaderAction {
+                    icon: IconName::Plus,
+                    label: t.t("Add Member"),
+                    onclick: move |_| { view.set(MemberView::Add); },
                 }
-            }
-            button {
-                style: "align-self:flex-start; background:#fff; color:#4f46e5; border:1px solid #c7d2fe; border-radius:20px; padding:8px 16px; font-size:14px; font-weight:600; cursor:pointer;",
-                onclick: move |_| { view.set(MemberView::IdCardsPdf); },
-                {t.t("🪪 ID Cards PDF")}
+            },
+        }
+        div {
+            style: "padding:16px; display:flex; flex-direction:column; gap:16px;",
+
+            div {
+                style: "display:flex; gap:10px; flex-wrap:wrap;",
+                button {
+                    style: "{theme::BTN_SECONDARY} display:flex; align-items:center; gap:8px; padding:10px 16px; font-size:14px; border-radius:999px;",
+                    onclick: move |_| { view.set(MemberView::AddFamily); },
+                    Icon { name: IconName::Plus, size: 18, color: theme::PRIMARY.to_string() }
+                    {t.t("Add Family")}
+                }
+                button {
+                    style: "{theme::BTN_SECONDARY} display:flex; align-items:center; gap:8px; padding:10px 16px; font-size:14px; border-radius:999px;",
+                    onclick: move |_| { view.set(MemberView::IdCardsPdf); },
+                    Icon { name: IconName::IdCard, size: 18, color: theme::PRIMARY.to_string() }
+                    {t.t("ID Cards → PDF")}
+                }
             }
 
             if families_with_members.read().is_empty() && unassigned_members.read().is_empty() {
@@ -66,9 +72,12 @@ pub fn MemberList(view: Signal<MemberView>) -> Element {
 
             // Unassigned members
             if !unassigned_members.read().is_empty() {
-                GroupLabel { label: t.t("Unassigned Members") }
-                for m in unassigned_members.read().iter() {
-                    ContactRow { member: m.clone(), view }
+                SectionTitle { title: t.t("Unassigned Members").to_string() }
+                div {
+                    style: "{theme::CARD} padding:0 16px;",
+                    for m in unassigned_members.read().iter() {
+                        ContactRow { member: m.clone(), view }
+                    }
                 }
             }
         }
@@ -80,44 +89,34 @@ pub fn MemberList(view: Signal<MemberView>) -> Element {
 #[component]
 fn FamilyCard(family: Family, members: Vec<Member>, view: Signal<MemberView>) -> Element {
     let common_address_preview = family.common_address.as_deref()
-        .map(|a| if a.len() > 50 { format!("{}…", &a[..50]) } else { a.to_string() })
+        .map(|a| if a.chars().count() > 50 { format!("{}…", a.chars().take(50).collect::<String>()) } else { a.to_string() })
         .unwrap_or_else(|| "—".into());
 
     rsx! {
         div {
-            style: "background:#fff; border-radius:14px; padding:14px; box-shadow:0 1px 4px rgba(0,0,0,.07); display:flex; flex-direction:column; gap:10px; cursor:pointer;",
-            onclick: {
-                let family = family.clone();
-                move |_| { view.set(MemberView::FamilyDetail(family.clone())); }
-            },
+            style: "{theme::CARD} padding:0 16px;",
 
             div {
-                style: "display:flex; align-items:center; justify-content:space-between;",
-                div {
-                    style: "display:flex; align-items:center; gap:8px;",
-                    div {
-                        style: "width:40px; height:40px; border-radius:50%; background:#dbeafe; display:flex; align-items:center; justify-content:center; font-size:20px;",
-                        "🏠"
-                    }
-                    div {
-                        span { style: "font-size:16px; font-weight:700; color:#1f2937;", "{family.name}" }
-                        if family.common_address.is_some() {
-                            div {
-                                style: "font-size:12px; color:#6b7280;", "📍 {common_address_preview}"
-                            }
+                style: "display:flex; align-items:center; gap:12px; padding:14px 0; cursor:pointer; {theme::ROW_DIVIDER}",
+                onclick: {
+                    let family = family.clone();
+                    move |_| { view.set(MemberView::FamilyDetail(family.clone())); }
+                },
+                IconCircle { icon: None, fallback: IconName::House, color: theme::PRIMARY.to_string(), size: 44 }
+                div { style: "flex:1; min-width:0;",
+                    div { style: "font-size:15px; font-weight:600; color:{theme::TEXT};", "{family.name}" }
+                    if family.common_address.is_some() {
+                        div {
+                            style: "font-size:13px; color:{theme::TEXT_MUTED}; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;",
+                            "{common_address_preview}"
                         }
                     }
                 }
-                span { style: "color:#d1d5db; font-size:18px;", "›" }
+                Icon { name: IconName::ChevronRight, size: 20, color: theme::TEXT_MUTED.to_string() }
             }
 
-            if !members.is_empty() {
-                div {
-                    style: "display:flex; flex-direction:column; gap:8px; padding-left:48px;",
-                    for m in members.iter() {
-                        MiniContactRow { member: m.clone(), view }
-                    }
-                }
+            for m in members.iter() {
+                MiniContactRow { member: m.clone(), view }
             }
         }
     }
@@ -129,19 +128,16 @@ fn FamilyCard(family: Family, members: Vec<Member>, view: Signal<MemberView>) ->
 fn MiniContactRow(member: Member, view: Signal<MemberView>) -> Element {
     rsx! {
         div {
-            style: "display:flex; align-items:center; gap:8px; cursor:pointer; padding:4px 0;",
+            style: "display:flex; align-items:center; gap:12px; cursor:pointer; padding:10px 0 10px 12px; {theme::ROW_DIVIDER}",
             onclick: {
                 let m = member.clone();
                 move |_| { view.set(MemberView::Detail(m.clone())); }
             },
-            div {
-                style: "width:32px; height:32px; border-radius:50%; background:#f3f4f6; display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0;",
-                "{member.avatar()}"
+            InitialsAvatar { name: member.full_name.clone(), seed: member.id.clone(), size: 36 }
+            div { style: "flex:1; min-width:0;",
+                span { style: "font-size:14px; color:{theme::TEXT};", "{member.full_name}" }
             }
-            div { style: "flex:1;",
-                span { style: "font-size:14px; font-weight:500; color:#374151;", "{member.full_name}" }
-            }
-            span { style: "color:#d1d5db; font-size:14px; flex-shrink:0;", "›" }
+            Icon { name: IconName::ChevronRight, size: 18, color: theme::TEXT_MUTED.to_string() }
         }
     }
 }
@@ -153,53 +149,39 @@ fn ContactRow(member: Member, view: Signal<MemberView>) -> Element {
     let t = use_i18n();
     let phone_preview   = member.phone.as_deref().unwrap_or("—");
     let address_preview = member.address.as_deref()
-        .map(|a| if a.len() > 35 { format!("{}…", &a[..35]) } else { a.to_string() })
+        .map(|a| if a.chars().count() > 35 { format!("{}…", a.chars().take(35).collect::<String>()) } else { a.to_string() })
         .unwrap_or_else(|| "—".into());
     let is_owner = member.role == MemberRole::Owner;
 
     rsx! {
         div {
-            style: "background:#fff; border-radius:14px; padding:14px; box-shadow:0 1px 4px rgba(0,0,0,.07); display:flex; align-items:center; gap:12px; cursor:pointer;",
+            style: "display:flex; align-items:center; gap:12px; padding:12px 0; cursor:pointer; {theme::ROW_DIVIDER}",
             onclick: {
                 let m = member.clone();
                 move |_| { view.set(MemberView::Detail(m.clone())); }
             },
 
-            // Avatar
-            div {
-                style: "width:48px; height:48px; border-radius:50%; background:#eef2ff; display:flex; align-items:center; justify-content:center; font-size:26px; flex-shrink:0;",
-                "{member.avatar()}"
-            }
+            InitialsAvatar { name: member.full_name.clone(), seed: member.id.clone(), size: 48 }
 
             div { style: "flex:1; min-width:0;",
                 div {
                     style: "display:flex; align-items:center; gap:6px; margin-bottom:3px;",
-                    span { style: "font-size:15px; font-weight:700; color:#1f2937;", "{member.full_name}" }
+                    span { style: "font-size:15px; color:{theme::TEXT};", "{member.full_name}" }
                     if is_owner {
                         span {
-                            style: "font-size:10px; font-weight:700; background:#fef3c7; color:#d97706; border-radius:4px; padding:1px 6px;",
+                            style: "font-size:10px; font-weight:700; background:#fef3c7; color:#d97706; border-radius:999px; padding:2px 8px;",
                             {t.t("OWNER")}
                         }
                     }
                 }
-                div { style: "font-size:12px; color:#6b7280;", "📞 {phone_preview}" }
+                div { style: "font-size:13px; color:{theme::TEXT_MUTED};", "{phone_preview}" }
                 div {
-                    style: "font-size:12px; color:#9ca3af; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;",
-                    "📍 {address_preview}"
+                    style: "font-size:13px; color:{theme::TEXT_MUTED}; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;",
+                    "{address_preview}"
                 }
             }
 
-            span { style: "color:#d1d5db; font-size:18px; flex-shrink:0;", "›" }
-        }
-    }
-}
-
-#[component]
-fn GroupLabel(label: &'static str) -> Element {
-    rsx! {
-        div {
-            style: "font-size:11px; font-weight:700; color:#9ca3af; text-transform:uppercase; letter-spacing:.6px; padding:0 2px;",
-            "{label}"
+            Icon { name: IconName::ChevronRight, size: 20, color: theme::TEXT_MUTED.to_string() }
         }
     }
 }
@@ -209,9 +191,9 @@ fn EmptyState() -> Element {
     let t = use_i18n();
     rsx! {
         div {
-            style: "text-align:center; padding:56px 0; color:#9ca3af;",
-            p { style: "font-size:48px; margin:0;", "👨‍👩‍👧‍👦" }
-            p { style: "font-size:15px; font-weight:600; margin:12px 0 4px; color:#6b7280;", {t.t("No families yet")} }
+            style: "text-align:center; padding:56px 0; color:{theme::TEXT_MUTED}; display:flex; flex-direction:column; align-items:center;",
+            Icon { name: IconName::Users, size: 40, color: theme::TEXT_MUTED.to_string() }
+            p { style: "font-size:14px; font-weight:600; margin:12px 0 4px; color:{theme::TEXT};", {t.t("No families yet")} }
             p { style: "font-size:13px; margin:0;", {t.t("Add a family and members to organize contacts!")} }
         }
     }

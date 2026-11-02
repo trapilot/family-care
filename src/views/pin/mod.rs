@@ -2,6 +2,9 @@ use dioxus::prelude::*;
 use crate::i18n::use_i18n;
 use crate::app::AppState;
 use crate::repository::SettingsRepo;
+use crate::views::icons::{Icon, IconName};
+use crate::views::theme;
+use crate::views::ui::IconText;
 
 pub mod verify;
 pub use verify::PinVerifyModal;
@@ -43,14 +46,14 @@ pub fn PinSetup(on_set: EventHandler) -> Element {
 
     rsx! {
         div {
-            style: "display:flex; flex-direction:column; gap:20px; padding:calc(40px + env(safe-area-inset-top)) 20px calc(40px + env(safe-area-inset-bottom)); align-items:center; position:fixed; top:0; right:0; bottom:0; left:0; overflow-y:auto; justify-content:center; font-family:inherit;",
-            div { style: "font-size:40px;", "🔐" }
-            h1 { style: "font-size:24px; font-weight:700; color:#1f2937;", {t.t("Set your PIN")} },
-            p { style: "font-size:14px; color:#6b7280; text-align:center;", {t.t("You will need this PIN to unlock the app and access sensitive features")} },
+            style: "display:flex; flex-direction:column; gap:20px; padding:calc(40px + env(safe-area-inset-top)) 20px calc(40px + env(safe-area-inset-bottom)); align-items:center; position:fixed; top:0; right:0; bottom:0; left:0; overflow-y:auto; justify-content:center; font-family:inherit; background:{theme::BG};",
+            div { style: "width:72px; height:72px; border-radius:50%; background:{theme::PRIMARY_SOFT}; display:flex; align-items:center; justify-content:center;", Icon { name: IconName::Lock, size: 36, color: theme::PRIMARY.to_string() } }
+            h1 { style: "margin:0; font-size:21px; font-weight:600; color:{theme::TEXT};", {t.t("Set your PIN")} },
+            p { style: "margin:0; font-size:14px; color:{theme::TEXT_MUTED}; text-align:center;", {t.t("You will need this PIN to unlock the app and access sensitive features")} },
             
             if let Some(err) = error.read().clone() {
                 div {
-                    style: "width:100%; max-width:300px; background:#fee2e2; border:2px solid #ef4444; border-radius:8px; padding:14px; color:#ef4444; font-weight:700; text-align:center; font-size:14px;",
+                    style: "width:100%; max-width:300px; box-sizing:border-box; background:{theme::NEGATIVE_SOFT}; border-radius:12px; padding:12px 14px; color:{theme::DANGER}; font-weight:600; text-align:center; font-size:14px;",
                     "{err}"
                 }
             }
@@ -62,14 +65,14 @@ pub fn PinSetup(on_set: EventHandler) -> Element {
                     on_submit();
                 },
                 div { style: "display:flex; flex-direction:column; gap:8px;",
-                    label { style: "font-weight:600; font-size:14px; color:#374151;", {t.t("Enter PIN")} },
+                    label { style: "{theme::LABEL} margin:0;", {t.t("Enter PIN")} },
                     input {
                         r#type: "password",
                         inputmode: "numeric",
                         enterkeyhint: "done",
                         autocomplete: "off",
                         maxlength: 6,
-                        style: "width:100%; padding:12px; border:1px solid #e5e7eb; border-radius:8px; font-size:16px; text-align:center; letter-spacing:4px;",
+                        style: "{theme::INPUT} text-align:center; letter-spacing:4px;",
                         value: "{pin.read().clone()}",
                         oninput: move |e| {
                             let v = e.value().chars().filter(|c| c.is_ascii_digit()).collect();
@@ -80,14 +83,14 @@ pub fn PinSetup(on_set: EventHandler) -> Element {
                 }
                 
                 div { style: "display:flex; flex-direction:column; gap:8px;",
-                    label { style: "font-weight:600; font-size:14px; color:#374151;", {t.t("Confirm PIN")} },
+                    label { style: "{theme::LABEL} margin:0;", {t.t("Confirm PIN")} },
                     input {
                         r#type: "password",
                         inputmode: "numeric",
                         enterkeyhint: "done",
                         autocomplete: "off",
                         maxlength: 6,
-                        style: "width:100%; padding:12px; border:1px solid #e5e7eb; border-radius:8px; font-size:16px; text-align:center; letter-spacing:4px;",
+                        style: "{theme::INPUT} text-align:center; letter-spacing:4px;",
                         value: "{confirm_pin.read().clone()}",
                         oninput: move |e| {
                             let v = e.value().chars().filter(|c| c.is_ascii_digit()).collect();
@@ -98,7 +101,7 @@ pub fn PinSetup(on_set: EventHandler) -> Element {
                 }
                 
                 button {
-                    style: "margin-top:16px; width:100%; padding:14px; background:#6366f1; color:#fff; border:none; border-radius:12px; font-weight:700; font-size:16px; cursor:pointer;",
+                    style: "{theme::BTN_PRIMARY} margin-top:16px; width:100%;",
                     r#type: "submit",
                     {t.t("Continue")}
                 }
@@ -136,13 +139,13 @@ pub fn PinUnlock(on_unlock: EventHandler, on_reset: EventHandler) -> Element {
 
     rsx! {
         div {
-            style: "display:flex; flex-direction:column; gap:20px; padding:calc(40px + env(safe-area-inset-top)) 20px calc(40px + env(safe-area-inset-bottom)); align-items:center; position:fixed; top:0; right:0; bottom:0; left:0; overflow-y:auto; justify-content:center; font-family:inherit;",
-            div { style: "font-size:40px;", "🔒" }
-            h1 { style: "font-size:24px; font-weight:700; color:#1f2937;", {t.t("Enter your PIN")} },
+            style: "display:flex; flex-direction:column; gap:20px; padding:calc(40px + env(safe-area-inset-top)) 20px calc(40px + env(safe-area-inset-bottom)); align-items:center; position:fixed; top:0; right:0; bottom:0; left:0; overflow-y:auto; justify-content:center; font-family:inherit; background:{theme::BG};",
+            div { style: "width:72px; height:72px; border-radius:50%; background:{theme::PRIMARY_SOFT}; display:flex; align-items:center; justify-content:center;", Icon { name: IconName::Lock, size: 36, color: theme::PRIMARY.to_string() } }
+            h1 { style: "margin:0; font-size:21px; font-weight:600; color:{theme::TEXT};", {t.t("Enter your PIN")} },
             
             if let Some(err) = error.read().clone() {
                 div {
-                    style: "width:100%; max-width:300px; background:#fee2e2; border:2px solid #ef4444; border-radius:8px; padding:14px; color:#ef4444; font-weight:700; text-align:center; font-size:14px;",
+                    style: "width:100%; max-width:300px; box-sizing:border-box; background:{theme::NEGATIVE_SOFT}; border-radius:12px; padding:12px 14px; color:{theme::DANGER}; font-weight:600; text-align:center; font-size:14px;",
                     "{err}"
                 }
             }
@@ -160,7 +163,7 @@ pub fn PinUnlock(on_unlock: EventHandler, on_reset: EventHandler) -> Element {
                         enterkeyhint: "done",
                         autocomplete: "off",
                         maxlength: 6,
-                        style: "width:100%; padding:12px; border:1px solid #e5e7eb; border-radius:8px; font-size:16px; text-align:center; letter-spacing:4px;",
+                        style: "{theme::INPUT} text-align:center; letter-spacing:4px;",
                         value: "{pin.read().clone()}",
                         oninput: move |e| {
                             let v = e.value().chars().filter(|c| c.is_ascii_digit()).collect();
@@ -171,7 +174,7 @@ pub fn PinUnlock(on_unlock: EventHandler, on_reset: EventHandler) -> Element {
                 }
                 
                 button {
-                    style: "margin-top:16px; width:100%; padding:14px; background:#6366f1; color:#fff; border:none; border-radius:12px; font-weight:700; font-size:16px; cursor:pointer;",
+                    style: "{theme::BTN_PRIMARY} margin-top:16px; width:100%;",
                     r#type: "submit",
                     {t.t("Unlock")}
                 }
@@ -196,48 +199,48 @@ fn ForgotPin(on_reset: EventHandler) -> Element {
 
     rsx! {
         button {
-            style: "border:none; background:transparent; color:#6b7280; font-size:14px; text-decoration:underline; cursor:pointer; padding:4px;",
+            style: "border:none; background:transparent; color:{theme::TEXT_MUTED}; font-size:14px; text-decoration:underline; cursor:pointer; padding:4px;",
             onclick: move |_| { typed.set(String::new()); error.set(None); open.set(true); },
             {t.t("Forgot PIN?")}
         }
 
         if open() {
             div {
-                style: "position:fixed; inset:0; background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; z-index:100; padding:20px;",
+                style: "{theme::OVERLAY}",
                 div {
-                    style: "background:#fff; border-radius:16px; padding:22px; max-width:340px; width:100%; display:flex; flex-direction:column; gap:12px;",
-                    h3 { style: "margin:0; font-size:17px; font-weight:700; color:#ef4444;", {t.t("⚠️ Reset the app?")} }
-                    p { style: "margin:0; font-size:14px; color:#374151; line-height:1.5;",
+                    style: "{theme::DIALOG} display:flex; flex-direction:column; gap:12px;",
+                    h3 { style: "margin:0; font-size:16px; font-weight:600; color:{theme::DANGER};", IconText { text: t.t("⚠️ Reset the app?").to_string(), size: 18 } }
+                    p { style: "margin:0; font-size:14px; color:{theme::TEXT}; line-height:1.5;",
                         {t.t("This permanently deletes ALL data on this device: wallets, transactions, members, ID photos, reminders and bills. You will then create a new PIN.")}
                     }
-                    p { style: "margin:0; font-size:13px; color:#6b7280; line-height:1.5;",
+                    p { style: "margin:0; font-size:13px; color:{theme::TEXT_MUTED}; line-height:1.5;",
                         {t.t("Backup files are kept — after setting the new PIN you can import one from Settings → Backup.")}
                     }
-                    label { style: "font-size:13px; color:#374151;",
+                    label { style: "{theme::LABEL} margin:0;",
                         {t.t("Type {word} to confirm").replace("{word}", RESET_WORD)}
                     }
                     input {
                         r#type: "text",
                         autocomplete: "off",
                         autocapitalize: "characters",
-                        style: "padding:10px 12px; border:1px solid #e5e7eb; border-radius:8px; font-size:16px; text-align:center; letter-spacing:2px;",
+                        style: "{theme::INPUT} text-align:center; letter-spacing:2px;",
                         value: "{typed}",
                         oninput: move |e| typed.set(e.value()),
                     }
                     if let Some(err) = error() {
-                        div { style: "font-size:13px; color:#ef4444;", "{err}" }
+                        div { style: "font-size:13px; color:{theme::DANGER};", "{err}" }
                     }
                     div { style: "display:flex; gap:10px;",
                         button {
-                            style: "flex:1; padding:11px; border:1px solid #e5e7eb; border-radius:8px; background:#fff; font-size:14px; cursor:pointer;",
+                            style: "{theme::BTN_SECONDARY} flex:1;",
                             onclick: move |_| open.set(false),
                             {t.t("Cancel")}
                         }
                         button {
                             style: if confirmed {
-                                "flex:1; padding:11px; border:none; border-radius:8px; background:#ef4444; color:#fff; font-size:14px; font-weight:700; cursor:pointer;"
+                                "{theme::BTN_PRIMARY} flex:1; background:#c0262d;"
                             } else {
-                                "flex:1; padding:11px; border:none; border-radius:8px; background:#fca5a5; color:#fff; font-size:14px; font-weight:700;"
+                                "{theme::BTN_PRIMARY} flex:1; background:#e5a3a7; cursor:default;"
                             },
                             disabled: !confirmed,
                             onclick: move |_| match crate::db::reset() {

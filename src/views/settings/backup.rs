@@ -6,7 +6,35 @@ use std::path::PathBuf;
 use crate::app::AppState;
 use crate::models::{Category, CurrencyInfo, Family, Holding, IdCardImage, Member, Transaction, Wallet};
 use crate::repository::{CategoryRepo, CurrencyRepo, FamilyRepo, HoldingRepo, IdCardRepo, SettingsRepo, TransactionRepo, WalletRepo};
+use crate::views::icons::{emoji_icon, Icon, IconName};
 use crate::views::pin::PinVerifyModal;
+use crate::views::theme;
+use crate::views::ui::IconText;
+
+/// Banner showing an operation result: a check/cross icon chosen from the leading emoji
+#[component]
+fn StatusBanner(text: String) -> Element {
+    let (fg, bg) = if text.starts_with('✅') {
+        (theme::POSITIVE, theme::POSITIVE_SOFT)
+    } else if text.starts_with('❌') {
+        (theme::DANGER, theme::NEGATIVE_SOFT)
+    } else {
+        (theme::TEXT, theme::BG)
+    };
+    let (icon, label) = match emoji_icon(&text) {
+        Some((name, rest)) => (Some(name), rest.to_string()),
+        None => (None, text.clone()),
+    };
+    rsx! {
+        div {
+            style: "display:flex; align-items:flex-start; gap:8px; background:{bg}; color:{fg}; border-radius:12px; padding:10px 12px; font-size:13px; overflow-wrap:anywhere;",
+            if let Some(name) = icon {
+                Icon { name, size: 16, color: fg.to_string() }
+            }
+            span { "{label}" }
+        }
+    }
+}
 
 // ─── Backup format ────────────────────────────────────────────────────────────
 
@@ -199,31 +227,34 @@ pub fn BackupSettings() -> Element {
 
             // ── App info ──
             div {
-                style: "background:#fff; border-radius:12px; padding:16px; box-shadow:0 1px 3px rgba(0,0,0,.06);",
-                div { style: "font-size:11px; color:#9ca3af; margin-bottom:4px;", "APP" }
-                div { style: "font-size:16px; font-weight:700; color:#1f2937;", "Family Finance" }
-                div { style: "font-size:13px; color:#6b7280; margin-top:2px;", {t.t("Version {version} · SQLite local storage").replace("{version}", &app_version.read())} }
+                style: "background:#fff; border-radius:16px; padding:16px;",
+                div { style: "font-size:12px; color:{theme::TEXT_MUTED}; margin-bottom:4px;", "APP" }
+                div { style: "font-size:15px; font-weight:600; color:{theme::TEXT};", "Family Finance" }
+                div { style: "font-size:13px; color:{theme::TEXT_MUTED}; margin-top:2px;", {t.t("Version {version} · SQLite local storage").replace("{version}", &app_version.read())} }
             }
 
             // ── Export ──
             div {
-                style: "background:#fff; border-radius:12px; padding:16px; box-shadow:0 1px 3px rgba(0,0,0,.06);",
-                h2 { style: "margin:0 0 8px; font-size:16px; font-weight:700; color:#1f2937;", {t.t("Export Backup")} }
-                p  { style: "margin:0 0 12px; font-size:13px; color:#6b7280; line-height:1.5;",
+                style: "background:#fff; border-radius:16px; padding:16px;",
+                h2 { style: "margin:0 0 8px; font-size:14px; font-weight:600; color:{theme::TEXT};", {t.t("Export Backup")} }
+                p  { style: "margin:0 0 12px; font-size:13px; color:{theme::TEXT_MUTED}; line-height:1.5;",
                     {t.t("Export all wallets, holdings, categories, transactions, members and families as a .bk file.")}
                 }
                 button {
-                    style: "width:100%; padding:13px; background:#6366f1; color:#fff; border:none; border-radius:12px; font-size:15px; font-weight:700; cursor:pointer;",
+                    style: "{theme::BTN_PRIMARY} width:100%;",
                     onclick: export,
-                    {t.t("📤 Export .bk")}
+                    span {
+                        style: "display:inline-flex; align-items:center; justify-content:center;",
+                        IconText { text: t.t("📤 Export .bk").to_string(), size: 18, color: "#ffffff".to_string(), gap: 8 }
+                    }
                 }
             }
 
             // ── Existing backups ──
             if !backups.read().is_empty() {
                 div {
-                    style: "background:#fff; border-radius:12px; padding:16px; box-shadow:0 1px 3px rgba(0,0,0,.06);",
-                    h2 { style: "margin:0 0 8px; font-size:16px; font-weight:700; color:#1f2937;", {t.t("Saved Backups")} }
+                    style: "background:#fff; border-radius:16px; padding:16px;",
+                    h2 { style: "margin:0 0 8px; font-size:14px; font-weight:600; color:{theme::TEXT};", {t.t("Saved Backups")} }
                     div { style: "display:flex; flex-direction:column; gap:8px;",
                         for path in backups.read().iter() {
                             BackupFileItem {
@@ -239,14 +270,14 @@ pub fn BackupSettings() -> Element {
 
             // ── Import from file ──
             div {
-                style: "background:#fff; border-radius:12px; padding:16px; box-shadow:0 1px 3px rgba(0,0,0,.06);",
-                h2 { style: "margin:0 0 8px; font-size:16px; font-weight:700; color:#1f2937;", {t.t("Import from shared file")} }
-                p  { style: "margin:0 0 12px; font-size:13px; color:#ef4444; line-height:1.5; background:#fef2f2; border-radius:8px; padding:10px;",
-                    {t.t("⚠️ Import will REPLACE all existing data. This cannot be undone. Select a shared backup file to import it.")}
+                style: "background:#fff; border-radius:16px; padding:16px;",
+                h2 { style: "margin:0 0 8px; font-size:14px; font-weight:600; color:{theme::TEXT};", {t.t("Import from shared file")} }
+                p  { style: "margin:0 0 12px; font-size:13px; color:{theme::DANGER}; line-height:1.5; background:{theme::NEGATIVE_SOFT}; border-radius:12px; padding:10px 12px;",
+                    IconText { text: t.t("⚠️ Import will REPLACE all existing data. This cannot be undone. Select a shared backup file to import it.").to_string(), color: theme::DANGER.to_string(), gap: 8 }
                 }
                 label {
-                    style: "display:block; width:100%; padding:13px; background:#6366f1; color:#fff; border:none; border-radius:12px; font-size:15px; font-weight:700; cursor:pointer; text-align:center;",
-                    {t.t("📥 Import File")}
+                    style: "{theme::BTN_PRIMARY} display:flex; align-items:center; justify-content:center; gap:8px; width:100%; box-sizing:border-box; text-align:center;",
+                    IconText { text: t.t("📥 Import File").to_string(), size: 18, color: "#ffffff".to_string(), gap: 8 }
                     input {
                         r#type: "file",
                         accept: ".bk,.ffbackup",
@@ -321,14 +352,7 @@ pub fn BackupSettings() -> Element {
 
             // ── Status ──
             if !status.read().is_empty() {
-                div {
-                    style: if *is_ok.read() {
-                        "background:#f0fdf4; border-radius:8px; padding:12px; font-size:14px; color:#15803d;"
-                    } else {
-                        "background:#fef2f2; border-radius:8px; padding:12px; font-size:14px; color:#dc2626;"
-                    },
-                    "{status.read()}"
-                }
+                StatusBanner { text: status.read().clone() }
             }
 
             // ── Danger zone ──
@@ -364,26 +388,28 @@ fn BackupFileItem(
 
     rsx! {
         div {
-            style: "display:flex; align-items:center; justify-content:space-between; padding:10px 12px; background:#f9fafb; border-radius:8px;",
+            style: "display:flex; align-items:center; justify-content:space-between; padding:10px 12px; background:#f7f7fc; border-radius:12px;",
             span {
-                style: "font-size:13px; color:#374151;",
+                style: "font-size:13px; color:{theme::TEXT}; overflow-wrap:anywhere;",
                 "{filename}"
             }
             div {
                 style: "display:flex; gap:8px;",
                 button {
-                    style: "padding:6px 10px; border:none; border-radius:6px; background:#ef4444; color:#fff; font-size:12px; font-weight:600; cursor:pointer;",
+                    style: "padding:6px 12px; border:none; border-radius:999px; background:{theme::NEGATIVE_SOFT}; color:{theme::DANGER}; font-size:12px; font-weight:600; cursor:pointer;",
                     onclick: move |_| on_import.call(path_clone_import.clone()),
                     {t.t("Revert")}
                 }
                 button {
-                    style: "padding:6px 10px; border:none; border-radius:6px; background:#6366f1; color:#fff; font-size:12px; font-weight:600; cursor:pointer;",
+                    style: "padding:6px 12px; border:none; border-radius:999px; background:{theme::PRIMARY}; color:#fff; font-size:12px; font-weight:600; cursor:pointer;",
                     onclick: move |_| on_share.call(path_clone_share.clone()),
+                    Icon { name: IconName::Upload, size: 16, color: "#ffffff".to_string() }
                     {t.t("Share")}
                 }
                 button {
-                    style: "padding:6px 10px; border:none; border-radius:6px; background:#6b7280; color:#fff; font-size:12px; font-weight:600; cursor:pointer;",
+                    style: "padding:6px 12px; border:none; border-radius:999px; background:{theme::BG}; color:{theme::TEXT_MUTED}; font-size:12px; font-weight:600; cursor:pointer;",
                     onclick: move |_| on_delete.call(path_clone_delete.clone()),
+                    Icon { name: IconName::Trash, size: 16, color: theme::TEXT_MUTED.to_string() }
                     {t.t("Delete")}
                 }
             }
@@ -411,43 +437,46 @@ fn TransactionPhotos() -> Element {
 
     rsx! {
         div {
-            style: "background:#fff; border-radius:12px; padding:16px; box-shadow:0 1px 3px rgba(0,0,0,.06);",
-            h2 { style: "margin:0 0 6px; font-size:16px; font-weight:700; color:#1f2937;", {t.t("Transaction photos")} }
-            p { style: "margin:0 0 12px; font-size:13px; color:#6b7280; line-height:1.5;",
+            style: "background:#fff; border-radius:16px; padding:16px;",
+            h2 { style: "margin:0 0 6px; font-size:14px; font-weight:600; color:{theme::TEXT};", {t.t("Transaction photos")} }
+            p { style: "margin:0 0 12px; font-size:13px; color:{theme::TEXT_MUTED}; line-height:1.5;",
                 {t.t("{count} photos · {size}. Deleting them makes the database smaller; the transactions stay.")
                     .replace("{count}", &count.to_string()).replace("{size}", &size)}
             }
             button {
                 style: if count > 0 {
-                    "width:100%; padding:12px; background:transparent; color:#ef4444; border:1px solid #ef4444; border-radius:10px; font-size:14px; font-weight:600; cursor:pointer;"
+                    "{theme::BTN_DANGER} width:100%;"
                 } else {
-                    "width:100%; padding:12px; background:transparent; color:#d1d5db; border:1px solid #e5e7eb; border-radius:10px; font-size:14px; font-weight:600;"
+                    "{theme::BTN_SECONDARY} width:100%; opacity:.45; cursor:default;"
                 },
                 disabled: count == 0,
                 onclick: move |_| confirm.set(true),
-                {t.t("🗑 Clear all transaction photos")}
+                span {
+                    style: "display:inline-flex; align-items:center; justify-content:center;",
+                    IconText { text: t.t("🗑 Clear all transaction photos").to_string(), size: 18, color: if count > 0 { theme::DANGER.to_string() } else { theme::PRIMARY.to_string() }, gap: 8 }
+                }
             }
             if !status.read().is_empty() {
-                p { style: "margin:10px 0 0; font-size:13px; color:#374151;", "{status}" }
+                div { style: "margin-top:10px;", StatusBanner { text: status.read().clone() } }
             }
 
             if confirm() {
                 div {
-                    style: "position:fixed; inset:0; background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; z-index:100; padding:20px;",
+                    style: "{theme::OVERLAY}",
                     div {
-                        style: "background:#fff; border-radius:16px; padding:22px; max-width:320px; width:100%;",
-                        h3 { style: "margin:0 0 8px; font-size:17px; font-weight:700;", {t.t("Delete all transaction photos?")} }
-                        p { style: "margin:0 0 18px; font-size:14px; color:#6b7280; line-height:1.5;",
+                        style: "{theme::DIALOG}",
+                        h3 { style: "margin:0 0 8px; font-size:16px; font-weight:600; color:{theme::TEXT};", {t.t("Delete all transaction photos?")} }
+                        p { style: "margin:0 0 18px; font-size:14px; color:{theme::TEXT_MUTED}; line-height:1.5;",
                             {t.t("{count} photos will be permanently deleted. Transactions and ID card photos are kept.").replace("{count}", &count.to_string())}
                         }
                         div { style: "display:flex; gap:10px;",
                             button {
-                                style: "flex:1; padding:11px; border:1px solid #e5e7eb; border-radius:8px; background:#fff; font-size:14px; cursor:pointer;",
+                                style: "{theme::BTN_SECONDARY} flex:1;",
                                 onclick: move |_| confirm.set(false),
                                 {t.t("Cancel")}
                             }
                             button {
-                                style: "flex:1; padding:11px; border:none; border-radius:8px; background:#ef4444; color:#fff; font-size:14px; font-weight:700; cursor:pointer;",
+                                style: "{theme::BTN_DANGER} flex:1;",
                                 onclick: {
                                     let state = state.clone();
                                     let load = load.clone();
@@ -504,12 +533,15 @@ fn DangerZone() -> Element {
 
     rsx! {
         div {
-            style: "background:#fff; border-radius:12px; padding:16px; box-shadow:0 1px 3px rgba(0,0,0,.06); border:1px solid #fee2e2;",
-            h2 { style: "margin:0 0 8px; font-size:16px; font-weight:700; color:#ef4444;", {t.t("⚠️ Danger Zone")} }
-            p  { style: "margin:0 0 12px; font-size:13px; color:#6b7280;", {t.t("Permanently delete all data. Cannot be undone.")} }
+            style: "background:#fff; border-radius:16px; padding:16px; border:1px solid #fde3ea;",
+            h2 {
+                style: "margin:0 0 8px; font-size:14px; font-weight:600; color:{theme::DANGER}; display:flex; align-items:center; gap:8px;",
+                IconText { text: t.t("⚠️ Danger Zone").to_string(), color: theme::DANGER.to_string(), gap: 8 }
+            }
+            p  { style: "margin:0 0 12px; font-size:13px; color:#8a8d9f;", {t.t("Permanently delete all data. Cannot be undone.")} }
 
             button {
-                style: "width:100%; padding:12px; background:transparent; color:#ef4444; border:1px solid #ef4444; border-radius:10px; font-size:14px; font-weight:600; cursor:pointer;",
+                style: "{theme::BTN_DANGER} width:100%;",
                 onclick: move |_| {
                     confirmed.set(true);
                     show_pin_modal.set(true);
@@ -518,7 +550,7 @@ fn DangerZone() -> Element {
             }
 
             if !status.read().is_empty() {
-                p { style: "margin:10px 0 0; font-size:13px; color:#374151;", "{status}" }
+                div { style: "margin-top:10px;", StatusBanner { text: status.read().clone() } }
             }
 
             PinVerifyModal {
@@ -866,6 +898,16 @@ fn share_backup(json: &str, path: &PathBuf) -> crate::error::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn emoji_icon_strips_leading_emoji() {
+        assert_eq!(emoji_icon("✅ Done").map(|(_, r)| r), Some("Done"));
+        assert_eq!(emoji_icon("❌ Failed: x").map(|(_, r)| r), Some("Failed: x"));
+        assert_eq!(emoji_icon("⚠️ Danger Zone").map(|(_, r)| r), Some("Danger Zone"));
+        assert_eq!(emoji_icon("📤 Export .bk").map(|(_, r)| r), Some("Export .bk"));
+        assert_eq!(emoji_icon("plain"), None);
+    }
+
     use crate::models::{Currency, NewReminder, NewWallet, NewTransaction, RepeatUnit, TransactionType, WalletType};
     use crate::repository::{ReminderRepo, WalletRepo};
     use crate::services::TransactionService;
