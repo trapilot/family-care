@@ -27,7 +27,21 @@ fn main() {
         dir.join("family_finance.db")
     };
 
-    #[cfg(not(target_os = "ios"))]
+    // The working directory is "/" (read-only) on Android: use the app's private files dir,
+    // found from the process name, which is the package name
+    #[cfg(target_os = "android")]
+    let db_path = {
+        let cmdline = std::fs::read("/proc/self/cmdline").expect("Could not read process name");
+        let package = String::from_utf8_lossy(cmdline.split(|b| *b == 0).next().unwrap_or_default()).into_owned();
+        let dir = PathBuf::from("/data/data").join(package).join("files");
+
+        std::fs::create_dir_all(&dir)
+            .expect("Failed to create database directory");
+
+        dir.join("family_finance.db")
+    };
+
+    #[cfg(not(any(target_os = "ios", target_os = "android")))]
     let db_path = PathBuf::from("family_finance.db");
 
     let db_path = db_path
