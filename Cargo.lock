@@ -1740,6 +1740,7 @@ dependencies = [
  "chrono",
  "dioxus",
  "futures-util",
+ "manganis",
  "objc2",
  "objc2-core-foundation",
  "objc2-foundation",

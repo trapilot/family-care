@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Where wry writes captured photos: getExternalFilesDir(DIRECTORY_PICTURES) -->
+<paths>
+    <external-files-path name="camera_captures" path="Pictures/" />
+</paths>

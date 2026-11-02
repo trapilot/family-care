@@ -118,9 +118,24 @@ pub fn amounts_in(text: &str) -> Vec<Decimal> {
     out
 }
 
-/// Biggest money amount across all lines of a recognized photo.
+/// Bare whole numbers (`10000`) that `amounts_in` skips for lack of a currency marker: 4-9 digits,
+/// no leading 0 (phone numbers), not glued to letters, other digits or date/time/percent signs.
+fn plain_numbers_in(text: &str) -> Vec<Decimal> {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    let re = RE.get_or_init(|| Regex::new(r"\d+").expect("valid plain number regex"));
+    let glued = |c: Option<char>| c.is_some_and(|c| c.is_alphanumeric() || matches!(c, '/' | ':' | '%' | '.' | ',' | '-'));
+    re.find_iter(text)
+        .filter(|m| (4..=9).contains(&m.len()) && !m.as_str().starts_with('0'))
+        .filter(|m| !glued(text[..m.start()].chars().next_back()) && !glued(text[m.end()..].chars().next()))
+        .filter_map(|m| Decimal::from_str(m.as_str()).ok())
+        .collect()
+}
+
+/// Biggest money amount across all lines of a recognized photo; when none has a currency marker or
+/// grouping, the biggest bare number instead.
 pub fn biggest_amount(page: &OcrPage) -> Option<Decimal> {
     page.lines.iter().flat_map(|l| amounts_in(&l.text)).max()
+        .or_else(|| page.lines.iter().flat_map(|l| plain_numbers_in(&l.text)).max())
 }
 
 #[cfg(test)]
@@ -180,5 +195,13 @@ mod tests {
             ],
         };
         assert_eq!(biggest_amount(&page), Some(d("1210000")));
+
+        // No marked/grouped amount: biggest bare number, skipping phone numbers, dates and codes
+        let bare = |lines: &[&str]| OcrPage { width: 0, height: 0, lines: lines.iter().map(|t| line(t)).collect() };
+        assert_eq!(biggest_amount(&bare(&["10000"])), Some(d("10000")));
+        assert_eq!(biggest_amount(&bare(&["Ban 12", "5000", "25000", "SĐT 0912345678"])), Some(d("25000")));
+        assert_eq!(biggest_amount(&bare(&["2026-11-02", "02/11/2026", "FT26306123", "1234567890"])), None);
+        // A marked amount still wins over a bigger bare number
+        assert_eq!(biggest_amount(&bare(&["99999", "50.000đ"])), Some(d("50000")));
     }
 }

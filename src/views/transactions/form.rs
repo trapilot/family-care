@@ -360,7 +360,8 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
                         {
                             let cid = c.id.clone();
                             let selected = *category_id.read() == c.id;
-                            let ring = if selected { "box-shadow:0 0 0 2px #3f51b5;" } else { "" };
+                            // Always set box-shadow: dropping the declaration leaves the old ring on Android
+                            let ring = if selected { "0 0 0 2px #3f51b5" } else { "none" };
                             let color = c.color.clone().unwrap_or_else(|| theme::TEXT_MUTED.to_string());
                             let name = t.tr(&c.name).to_string();
                             let name_color = if selected { theme::PRIMARY } else { theme::TEXT };
@@ -370,7 +371,7 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
                                     style: "display:flex; flex-direction:column; align-items:center; gap:6px; border:none; background:transparent; padding:0; cursor:pointer; min-width:0;",
                                     onclick: move |_| { category_id.set(cid.clone()); },
                                     span {
-                                        style: "display:inline-flex; border-radius:50%; {ring}",
+                                        style: "display:inline-flex; border-radius:50%; box-shadow:{ring};",
                                         IconCircle { icon: c.icon.clone(), fallback: IconName::Tag, color, size: 48 }
                                     }
                                     span {

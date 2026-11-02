@@ -36,6 +36,10 @@ block2                   = "0.6"
 objc2-foundation         = { version = "0.3", features = ["NSString", "NSError", "NSArray", "NSSet"] }
 objc2-user-notifications = { version = "0.3", features = ["UNUserNotificationCenter", "UNNotificationContent", "UNNotificationRequest", "UNNotificationTrigger", "UNNotificationSound", "UNNotification", "UNNotificationResponse", "UNNotificationAction", "UNNotificationCategory", "block2"] }
 
+# Bundles android/camera-capture into the Android app (FileProvider for `capture` inputs)
+[target.'cfg(target_os = "android")'.dependencies]
+manganis = "0.7.10"
+
 # On-device text recognition (bank statement photos)
 [target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
 objc2                 = "0.6"

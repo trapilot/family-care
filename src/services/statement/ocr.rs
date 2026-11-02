@@ -1,4 +1,4 @@
-//! On-device text recognition (Apple Vision) for statement photos.
+//! On-device text recognition (Apple Vision on iOS / macOS, ML Kit on Android) for statement photos.
 
 use serde::{Deserialize, Serialize};
 
@@ -24,6 +24,7 @@ pub struct OcrPage {
 }
 
 /// Pixel size of a JPEG, read from its SOF marker.
+#[cfg_attr(target_os = "android", allow(dead_code))]
 fn jpeg_size(jpeg: &[u8]) -> Option<(u32, u32)> {
     if jpeg.len() < 4 || jpeg[0] != 0xFF || jpeg[1] != 0xD8 {
         return None;
@@ -112,8 +113,16 @@ pub fn recognize(jpeg: &[u8]) -> Result<OcrPage> {
     })
 }
 
-/// Text recognition needs Apple Vision; other targets only compile.
-#[cfg(not(any(target_os = "ios", target_os = "macos")))]
+/// Recognize text in a JPEG (blocking). Runs ML Kit (android/camera-capture) on Android.
+#[cfg(target_os = "android")]
+pub fn recognize(jpeg: &[u8]) -> Result<OcrPage> {
+    let json = crate::android::recognize_text_json(jpeg)
+        .ok_or_else(|| AppError::Validation("Text recognition failed".into()))?;
+    serde_json::from_str(&json).map_err(|e| AppError::Parse(e.to_string()))
+}
+
+/// Text recognition needs Apple Vision or ML Kit; other targets only compile.
+#[cfg(not(any(target_os = "ios", target_os = "macos", target_os = "android")))]
 pub fn recognize(_jpeg: &[u8]) -> Result<OcrPage> {
     Err(AppError::Validation("Text recognition is not supported on this device".into()))
 }

@@ -79,14 +79,15 @@ pub fn IconPicker(
             for opt in options {
                 {
                     let selected = icon_for_emoji(&value) == icon_for_emoji(opt) && icon_for_emoji(opt).is_some() || value == opt;
-                    let shadow = if selected { "box-shadow:0 0 0 2px #3f51b5;" } else { "" };
+                    // Always set box-shadow: dropping the declaration leaves the old ring on Android
+                    let shadow = if selected { "0 0 0 2px #3f51b5" } else { "none" };
                     rsx! {
                         button {
                             key: "{opt}",
                             style: "border:none; background:transparent; padding:2px; cursor:pointer; display:flex; align-items:center; justify-content:center; border-radius:0;",
                             onclick: move |_| on_select.call(opt.to_string()),
                             span {
-                                style: "display:inline-flex; border-radius:50%; {shadow}",
+                                style: "display:inline-flex; border-radius:50%; box-shadow:{shadow};",
                                 IconCircle { icon: Some(opt.to_string()), fallback: IconName::Package, color: color.clone(), size: 44 }
                             }
                         }
