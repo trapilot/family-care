@@ -192,6 +192,16 @@ fn migrate_v1(conn: &Connection) -> Result<()> {
             created_at INTEGER NOT NULL
         );
 
+        -- Credit card settings, one row per credit-card wallet (amounts in VND)
+        CREATE TABLE IF NOT EXISTS credit_cards (
+            wallet_id     TEXT PRIMARY KEY REFERENCES wallets(id),
+            statement_day INTEGER NOT NULL,            -- 1..31, short months use their last day
+            due_day       INTEGER NOT NULL,            -- 1..31, first such day after the statement date
+            credit_limit  REAL,                        -- optional, VND
+            paid_month    TEXT,                        -- 'YYYY-MM' of the statement marked paid
+            created_at    INTEGER NOT NULL
+        );
+
         -- ── Settings ──
         CREATE TABLE IF NOT EXISTS settings (
             key   TEXT PRIMARY KEY,
@@ -224,7 +234,7 @@ mod tests {
         let mut stmt = conn.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").unwrap();
         let tables: Vec<String> = stmt.query_map([], |r| r.get(0)).unwrap().collect::<Result<_>>().unwrap();
         assert_eq!(tables, [
-            "bills", "categories", "currencies", "exchange_rates", "families", "holdings",
+            "bills", "categories", "credit_cards", "currencies", "exchange_rates", "families", "holdings",
             "member_id_images", "members", "reminders", "settings", "transaction_images",
             "transactions", "wallet_balances", "wallets",
         ]);

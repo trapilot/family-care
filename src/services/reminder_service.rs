@@ -3,9 +3,10 @@ use rusqlite::Connection;
 
 use crate::error::Result;
 use crate::i18n::{translate, Lang};
-use crate::models::{Bill, Reminder, TransactionType, Wallet};
+use crate::models::{Bill, CardSummary, CreditCard, Reminder, TransactionType, Wallet};
 use crate::notify::{self, ActionTitles, Category, ScheduledNotification};
-use crate::repository::{BillRepo, ReminderRepo, SettingsRepo, WalletRepo};
+use crate::repository::{BillRepo, CreditCardRepo, ReminderRepo, SettingsRepo, WalletRepo};
+use crate::services::CreditCardService;
 use crate::views::{fmt_currency, fmt_vnd};
 
 /// How far ahead notifications are scheduled (re-synced every time the app opens)
@@ -54,6 +55,9 @@ impl ReminderService {
                 Err(_)  => Ok(()),
             },
             (Some("bill"), Some(id), Some(month)) => Self::mark_bill_paid(conn, id, month),
+            (Some("card"), Some(id), Some(month)) => {
+                CreditCardService::mark_month_paid(conn, id, month, Local::now().date_naive())
+            }
             _ => Ok(()),
         }
     }
@@ -62,6 +66,19 @@ impl ReminderService {
 
     fn bill_notification_id(bill_id: &str, month: &str, day: NaiveDate, slot: u32) -> String {
         format!("bill:{bill_id}:{month}:{day}:{slot}")
+    }
+
+    // ─── Credit cards ───
+
+    pub(crate) fn card_notification_id(wallet_id: &str, month: &str, day: NaiveDate, slot: u32) -> String {
+        format!("card:{wallet_id}:{month}:{day}:{slot}")
+    }
+
+    /// Notification title and body for a card, e.g. ("💳 Card payment due", "Visa · 1.200.000 ₫ · due 05/11")
+    pub fn describe_card(wallet_name: &str, due: NaiveDate, owed: rust_decimal::Decimal, lang: Lang) -> (String, String) {
+        let due = due.format("%d/%m");
+        let body = format!("{wallet_name} · {} · {} {due}", fmt_vnd(owed), translate(lang, "due"));
+        (translate(lang, "💳 Card payment due").to_string(), body)
     }
 
     /// Bills that notify on `date` (due and not yet paid this month)
@@ -121,7 +138,8 @@ impl ReminderService {
     pub fn build_schedule(conn: &Connection, now: DateTime<Local>) -> Result<Vec<ScheduledNotification>> {
         let reminders = ReminderRepo::list(conn)?;
         let bills     = BillRepo::list(conn)?;
-        if reminders.is_empty() && bills.is_empty() {
+        let cards     = CreditCardRepo::list(conn)?;
+        if reminders.is_empty() && bills.is_empty() && cards.is_empty() {
             return Ok(vec![]);
         }
         let wallets  = WalletRepo::list_active(conn)?;
@@ -130,13 +148,30 @@ impl ReminderService {
 
         let mut items = vec![];
         let today = now.date_naive();
+        // One summary per card; days after the next statement fall back to the total owed
+        let mut card_summaries: Vec<(&CreditCard, CardSummary)> = vec![];
+        for card in &cards {
+            card_summaries.push((card, CreditCardService::summary(conn, card, today)?));
+        }
         for offset in 0..SCHEDULE_DAYS {
             let day = today + Duration::days(offset);
             let due: Vec<&Reminder> = reminders.iter()
                 .filter(|r| !r.is_paused && r.is_due(day) && !r.is_done_on(day))
                 .collect();
             let unpaid: Vec<&Bill> = bills.iter().filter(|b| b.is_unpaid_on(day)).collect();
-            if due.is_empty() && unpaid.is_empty() {
+            // (wallet id, cycle key, title, body) of every card to pay on `day`
+            let mut card_due: Vec<(&str, String, String, String)> = vec![];
+            for (card, summary) in &card_summaries {
+                let statement = card.last_statement(day);
+                let owed = if statement == summary.statement_date { summary.remaining_due } else { summary.owed_total };
+                if !card.reminds_on(day, owed) {
+                    continue;
+                }
+                let name = wallets.iter().find(|w| w.id == card.wallet_id).map(|w| w.name.as_str()).unwrap_or_default();
+                let (title, body) = Self::describe_card(name, card.due_date(statement), owed, lang);
+                card_due.push((&card.wallet_id, card.cycle_key(day), title, body));
+            }
+            if due.is_empty() && unpaid.is_empty() && card_due.is_empty() {
                 continue;
             }
             for &slot in &slots {
@@ -160,6 +195,15 @@ impl ReminderService {
                         id: Self::bill_notification_id(&bill.id, &bill.cycle_key(day), day, slot),
                         title,
                         body,
+                        fire_at: at.timestamp(),
+                        category: Category::Bill,
+                    });
+                }
+                for (wallet_id, month, title, body) in &card_due {
+                    items.push(ScheduledNotification {
+                        id: Self::card_notification_id(wallet_id, month, day, slot),
+                        title: title.clone(),
+                        body: body.clone(),
                         fire_at: at.timestamp(),
                         category: Category::Bill,
                     });
@@ -189,6 +233,7 @@ impl ReminderService {
 mod tests {
     use super::*;
     use crate::models::{Currency, NewReminder, NewWallet, RepeatUnit, WalletType};
+    use crate::repository::CreditCardRepo;
     use rust_decimal::Decimal;
 
     fn setup(interval: u32) -> (Connection, String) {
@@ -294,6 +339,34 @@ mod tests {
         assert!(ReminderService::build_schedule(&conn, now).unwrap().is_empty());
         let next = crate::repository::BillRepo::list(&conn).unwrap()[0].next_due(day);
         assert_eq!(next, NaiveDate::from_ymd_opt(2026, 12, 5));
+    }
+
+    #[test]
+    fn card_notifies_from_three_days_before_due_until_paid() {
+        let (conn, _) = setup(12);
+        let card = WalletRepo::create(&conn, &NewWallet {
+            name: "Visa".into(), wallet_type: WalletType::CreditCard, broker: None, icon: None, color: None, sort_order: 0,
+        }).unwrap().id;
+        // Statement on the 5th, due on the 25th; owes 1.500.000 since an earlier statement
+        CreditCardRepo::upsert(&conn, &card, 5, 25, None).unwrap();
+        conn.execute("UPDATE credit_cards SET created_at = ?1", [at(NaiveDate::from_ymd_opt(2026, 10, 1).unwrap(), 6).timestamp()]).unwrap();
+        WalletRepo::add_balance(&conn, &card, &Currency::VND, -1_500_000.0).unwrap();
+
+        // Today 20 Nov: the 5 Nov statement is due 25 Nov, so notifications start on 22 Nov
+        let today = NaiveDate::from_ymd_opt(2026, 11, 20).unwrap();
+        let now = at(today, 6);
+        let items = ReminderService::build_schedule(&conn, now).unwrap();
+        // 08:00 and 20:00 from 22 Nov to 3 Dec (the window ends 3 Dec)
+        assert_eq!(items.len(), 24);
+        assert_eq!(items[0].fire_at, at(today + Duration::days(2), 8).timestamp());
+        assert_eq!(items[0].category, Category::Bill);
+        assert_eq!(items[0].title, "💳 Card payment due");
+        assert_eq!(items[0].body, "Visa · 1.500.000 ₫ · due 25/11");
+        assert!(items.iter().all(|n| n.id.starts_with(&format!("card:{card}:2026-11:"))));
+
+        // "Paid" from the notification stops them
+        ReminderService::handle_done_action(&conn, &items[0].id).unwrap();
+        assert!(ReminderService::build_schedule(&conn, now).unwrap().is_empty());
     }
 
     #[test]

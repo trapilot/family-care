@@ -14,6 +14,8 @@ extern "Kotlin" {
     pub fn capture(this: &CameraCapture, max_size: i32, front: i32) -> i32;
     pub fn take_result(this: &CameraCapture) -> Option<String>;
     pub fn recognize_text(this: &CameraCapture, jpeg_base64: String) -> String;
+    // Returns 1 when the share sheet was started, else 0
+    pub fn share_file(this: &CameraCapture, path: String, chooser_title: String) -> i32;
 }
 
 /// The Kotlin helper, created once through the activity's class loader (`find_class` can't see app
@@ -85,4 +87,10 @@ pub fn recognize_text_json(jpeg: &[u8]) -> Option<String> {
     let plugin = plugin()?;
     let b64 = base64::engine::general_purpose::STANDARD.encode(jpeg);
     recognize_text(plugin, b64).ok().filter(|s| !s.is_empty())
+}
+
+/// Open the system share sheet (app chooser) for a file under filesDir/backup.
+pub fn share_file_sheet(path: &str, chooser_title: &str) -> bool {
+    let Some(plugin) = plugin() else { return false };
+    matches!(share_file(plugin, path.to_string(), chooser_title.to_string()), Ok(1))
 }

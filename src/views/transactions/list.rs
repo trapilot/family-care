@@ -129,7 +129,7 @@ pub fn TransactionList(view: Signal<TxnView>) -> Element {
                 // ── Search ──
                 if show_search() {
                     input {
-                        style: "border:1px solid {theme::BORDER}; border-radius:12px; padding:10px 12px; font-size:14px; outline:none; background:#fff;",
+                        style: "border:1px solid {theme::BORDER}; border-radius:0; padding:10px 12px; font-size:14px; outline:none; background:#fff;",
                         r#type: "text",
                         placeholder: t.t("Search by note…"),
                         value: "{search_note.read()}",
@@ -226,18 +226,18 @@ pub fn TransactionList(view: Signal<TxnView>) -> Element {
                 div {
                     style: "position:fixed; inset:0; background:rgba(0,0,0,.4); display:flex; align-items:center; justify-content:center; z-index:100;",
                     div {
-                        style: "background:#fff; border-radius:20px; padding:24px; margin:16px; max-width:320px; width:100%;",
+                        style: "background:#fff; border-radius:0; padding:24px; margin:16px; max-width:320px; width:100%;",
                         h3 { style: "margin:0 0 8px; font-size:15px;", {t.t("Delete transaction?")} }
                         p  { style: "margin:0 0 20px; font-size:14px; color:{theme::TEXT_MUTED};", {t.t("This will reverse all balance changes.")} }
                         div {
                             style: "display:flex; gap:10px;",
                             button {
-                                style: "flex:1; padding:10px; border:1px solid {theme::BORDER}; border-radius:12px; background:#fff; cursor:pointer; font-size:14px;",
+                                style: "flex:1; padding:10px; border:1px solid {theme::BORDER}; border-radius:0; background:#fff; cursor:pointer; font-size:14px;",
                                 onclick: move |_| { show_confirm_delete.set(None); },
                                 {t.t("Cancel")}
                             }
                             button {
-                                style: "flex:1; padding:10px; border:none; border-radius:12px; background:{theme::NEGATIVE}; color:#fff; cursor:pointer; font-size:14px; font-weight:600;",
+                                style: "flex:1; padding:10px; border:none; border-radius:0; background:{theme::NEGATIVE}; color:#fff; cursor:pointer; font-size:14px; font-weight:600;",
                                 onclick: {
                                     let state = state.clone();
                                     let txn_id = txn_id.clone();

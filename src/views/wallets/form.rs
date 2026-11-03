@@ -5,8 +5,8 @@ use std::str::FromStr;
 
 use crate::app::AppState;
 use crate::models::{Currency, NewTransaction, NewWallet, Wallet, WalletType};
-use crate::repository::{CurrencyRepo, WalletRepo};
-use crate::services::TransactionService;
+use crate::repository::{CreditCardRepo, CurrencyRepo, WalletRepo};
+use crate::services::{ReminderService, TransactionService};
 use super::WalletView;
 use crate::views::icons::{icon_for_emoji, Icon, IconName};
 use crate::views::ui::{IconPicker, IconText, ScreenHeader};
@@ -47,6 +47,11 @@ pub fn WalletForm(view: Signal<WalletView>, editing: Option<Wallet>) -> Element 
     });
     let mut broker      = use_signal(|| editing.as_ref().and_then(|w| w.broker.clone()).unwrap_or_default());
     let mut icon        = use_signal(|| editing.as_ref().and_then(|w| w.icon.clone()).unwrap_or_default());
+    // Credit card settings: statement day, payment due day and optional limit (empty for a new card)
+    let existing_card = editing.as_ref().and_then(|w| state.with_conn(|conn| CreditCardRepo::get(conn, &w.id).ok().flatten()));
+    let mut statement_day = use_signal(|| existing_card.as_ref().map(|c| c.statement_day.to_string()).unwrap_or_default());
+    let mut due_day       = use_signal(|| existing_card.as_ref().map(|c| c.due_day.to_string()).unwrap_or_default());
+    let mut credit_limit  = use_signal(|| existing_card.as_ref().and_then(|c| c.credit_limit).map(|l| l.normalize().to_string()).unwrap_or_default());
     let error_msg   = use_signal(|| String::new());
     // Editing only: whether the wallet is unused (see `WalletRepo::can_delete`), and the confirm dialog
     let can_delete = use_signal({
@@ -65,6 +70,9 @@ pub fn WalletForm(view: Signal<WalletView>, editing: Option<Wallet>) -> Element 
         let balances = balances.clone();
         let broker = broker.clone();
         let icon = icon.clone();
+        let statement_day = statement_day.clone();
+        let due_day = due_day.clone();
+        let credit_limit = credit_limit.clone();
         let mut error_msg = error_msg.clone();
         let editing = editing.clone();
 
@@ -86,6 +94,24 @@ pub fn WalletForm(view: Signal<WalletView>, editing: Option<Wallet>) -> Element 
                 };
                 parsed.push((cur.clone(), amount));
             }
+            // Credit card settings, validated before anything is written
+            let is_card = *wallet_type.read() == WalletType::CreditCard;
+            let mut card_settings: Option<(u32, u32, Option<Decimal>)> = None;
+            if is_card {
+                let day = |raw: &str| raw.parse::<u32>().ok().filter(|d| (1..=31).contains(d));
+                let (Some(statement), Some(due)) = (day(&statement_day.read()), day(&due_day.read())) else {
+                    error_msg.set(t.t("Enter statement and due days (1–31)").into());
+                    return;
+                };
+                let limit = match credit_limit.read().as_str() {
+                    "" => None,
+                    s  => match Decimal::from_str(s) {
+                        Ok(l) if l >= Decimal::ZERO => Some(l),
+                        _ => { error_msg.set(t.t("Invalid credit limit").into()); return; }
+                    },
+                };
+                card_settings = Some((statement, due, limit));
+            }
             let broker_opt = {
                 let b = broker.read();
                 if b.is_empty() { None } else { Some(b.clone()) }
@@ -96,7 +122,7 @@ pub fn WalletForm(view: Signal<WalletView>, editing: Option<Wallet>) -> Element 
             };
 
             let result = state.with_conn(|conn| -> crate::error::Result<()> {
-                if let Some(ref old) = editing {
+                let wallet_id = if let Some(ref old) = editing {
                     let mut updated = old.clone();
                     updated.name        = name_val.clone();
                     updated.wallet_type = wallet_type.read().clone();
@@ -106,7 +132,7 @@ pub fn WalletForm(view: Signal<WalletView>, editing: Option<Wallet>) -> Element 
                     for (cur, amount) in &parsed {
                         TransactionService::set_opening_balance(conn, &updated.id, *amount, cur.clone(), t.t("Opening Balance"))?;
                     }
-                    Ok(())
+                    updated.id
                 } else {
                     // The balance only ever moves through transactions, so the opening amounts
                     // are recorded as "Opening Balance" transactions on a wallet created empty.
@@ -131,8 +157,14 @@ pub fn WalletForm(view: Signal<WalletView>, editing: Option<Wallet>) -> Element 
                         opening.note = Some(t.t("Opening Balance").to_string());
                         TransactionService::execute(conn, &opening)?;
                     }
-                    Ok(())
+                    wallet.id
+                };
+                match card_settings {
+                    Some((statement, due, limit)) => CreditCardRepo::upsert(conn, &wallet_id, statement, due, limit)?,
+                    None if editing.is_some() => CreditCardRepo::delete(conn, &wallet_id)?,
+                    None => {}
                 }
+                ReminderService::resync(conn)
             });
 
             match result {
@@ -147,6 +179,7 @@ pub fn WalletForm(view: Signal<WalletView>, editing: Option<Wallet>) -> Element 
         WalletType::Bank       => ("🏦", "#3f51b5"),
         WalletType::Loan       => ("🤝", "#bb3baa"),
         WalletType::EWallet    => ("📱", "#f59e0b"),
+        WalletType::CreditCard => ("💳", "#e11d48"),
         WalletType::Investment => ("📈", "#8b5cf6"),
     };
     let icon_options: Vec<&'static str> = std::iter::once(default_emoji)
@@ -171,6 +204,7 @@ pub fn WalletForm(view: Signal<WalletView>, editing: Option<Wallet>) -> Element 
                     (WalletType::Bank,       t.t("Bank"),       "🏦"),
                     (WalletType::Cash,       t.t("Cash"),       "💵"),
                     (WalletType::EWallet,    t.t("E-Wallet"),   "📱"),
+                    (WalletType::CreditCard, t.t("Credit Card"), "💳"),
                     (WalletType::Investment, t.t("Investment"), "📈"),
                     (WalletType::Loan,       t.t("Loan"),       "🤝"),
                 ] {
@@ -201,6 +235,40 @@ pub fn WalletForm(view: Signal<WalletView>, editing: Option<Wallet>) -> Element 
                 placeholder: t.t("e.g. HSBC"),
                 value: "{name.read()}",
                 oninput: move |e| { name.set(e.value().to_uppercase()); },
+            }
+
+            // ── Credit card: statement day, due day, limit ──
+            if *wallet_type.read() == WalletType::CreditCard {
+                div { style: "display:flex; gap:8px;",
+                    div { style: "flex:1; display:flex; flex-direction:column; gap:6px;",
+                        FieldLabel { label: t.t("Statement day") }
+                        input {
+                            style: "{theme::INPUT}",
+                            r#type: "text",
+                            inputmode: "numeric",
+                            value: "{statement_day.read()}",
+                            oninput: move |e| { statement_day.set(e.value().chars().filter(|c| c.is_ascii_digit()).take(2).collect()); },
+                        }
+                    }
+                    div { style: "flex:1; display:flex; flex-direction:column; gap:6px;",
+                        FieldLabel { label: t.t("Payment due day") }
+                        input {
+                            style: "{theme::INPUT}",
+                            r#type: "text",
+                            inputmode: "numeric",
+                            value: "{due_day.read()}",
+                            oninput: move |e| { due_day.set(e.value().chars().filter(|c| c.is_ascii_digit()).take(2).collect()); },
+                        }
+                    }
+                }
+                div { style: "font-size:12px; color:{theme::TEXT_MUTED}; margin-top:-10px;",
+                    {t.t("Day of month (1–31). Short months use their last day.")}
+                }
+                FieldLabel { label: t.t("Credit limit (optional)") }
+                AmountInput {
+                    value: credit_limit.read().clone(),
+                    oninput: move |v: String| credit_limit.set(v),
+                }
             }
 
             // ── Opening balance, one row per money type (new and edit) ──
@@ -253,7 +321,7 @@ pub fn WalletForm(view: Signal<WalletView>, editing: Option<Wallet>) -> Element 
             // ── Error ──
             if !error_msg.read().is_empty() {
                 div {
-                    style: "background:{theme::NEGATIVE_SOFT}; border-radius:12px; padding:10px 12px; font-size:13px; color:{theme::DANGER};",
+                    style: "background:{theme::NEGATIVE_SOFT}; border-radius:0; padding:10px 12px; font-size:13px; color:{theme::DANGER};",
                     "{error_msg.read()}"
                 }
             }

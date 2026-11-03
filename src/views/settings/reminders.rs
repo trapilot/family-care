@@ -74,7 +74,7 @@ pub fn RemindersSettings() -> Element {
 
             // ── Interval ──
             div {
-                style: "background:#fff; border-radius:16px; padding:16px;",
+                style: "background:#fff; border-radius:0; padding:16px;",
                 h2 { style: "margin:0 0 6px; font-size:14px; font-weight:600; color:{theme::TEXT};", {t.t("Notification frequency")} }
                 p { style: "margin:0 0 12px; font-size:13px; color:{theme::TEXT_MUTED}; line-height:1.5;",
                     {t.t("On a day with due income, transfers or unpaid bills, notify from the first notification time, then every N hours until midnight.")}
@@ -107,7 +107,7 @@ pub fn RemindersSettings() -> Element {
 
             // ── List ──
             div {
-                style: "background:#fff; border-radius:16px; padding:16px; display:flex; flex-direction:column; gap:12px;",
+                style: "background:#fff; border-radius:0; padding:16px; display:flex; flex-direction:column; gap:12px;",
                 h2 { style: "margin:0; font-size:14px; font-weight:600; color:{theme::TEXT};", {t.t("Recurring reminders")} }
                 if reminders.read().is_empty() {
                     p { style: "margin:0; font-size:13px; color:{theme::TEXT_MUTED}; line-height:1.5;",
@@ -182,7 +182,7 @@ pub fn RemindersSettings() -> Element {
 
 // ─── Monthly bills ────────────────────────────────────────────────────────────
 
-const INPUT_STYLE: &str = "border:1px solid #e6e6ef; border-radius:12px; padding:10px 12px; font-size:15px; outline:none; background:#fff; color:#1f2133;";
+const INPUT_STYLE: &str = "border:1px solid #e6e6ef; border-radius:0; padding:10px 12px; font-size:15px; outline:none; background:#fff; color:#1f2133;";
 
 /// Bills paid every month: notify from the due day, every day, until marked paid for that month
 #[component]
@@ -260,7 +260,7 @@ pub fn BillsSettings() -> Element {
 
     rsx! {
         div {
-            style: "background:#fff; border-radius:16px; padding:16px; display:flex; flex-direction:column; gap:12px;",
+            style: "background:#fff; border-radius:0; padding:16px; display:flex; flex-direction:column; gap:12px;",
             h2 { style: "margin:0; font-size:14px; font-weight:600; color:{theme::TEXT};", {t.t("Monthly bills")} }
             p { style: "margin:0; font-size:13px; color:{theme::TEXT_MUTED}; line-height:1.5;",
                 {t.t("From the due day, notify every day until you mark the bill paid for that month. Next month it starts again.")}
@@ -270,9 +270,9 @@ pub fn BillsSettings() -> Element {
             div {
                 id: "bill-form",
                 style: if editing.read().is_some() {
-                    "display:flex; flex-direction:column; gap:8px; background:#e2e5f7; border-radius:14px; padding:12px;"
+                    "display:flex; flex-direction:column; gap:8px; background:#e2e5f7; border-radius:0; padding:12px;"
                 } else {
-                    "display:flex; flex-direction:column; gap:8px; background:#f7f7fc; border-radius:14px; padding:12px;"
+                    "display:flex; flex-direction:column; gap:8px; background:#f7f7fc; border-radius:0; padding:12px;"
                 },
                 if let Some(b) = editing.read().as_ref() {
                     div { style: "font-size:13px; font-weight:600; color:#3f51b5;", IconText { text: format!("{} {}", t.t("✏️ Editing"), b.name), size: 14, gap: 4 } }

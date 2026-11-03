@@ -91,6 +91,7 @@ pub fn TypeTransactions(drill: TypeDrill, on_back: EventHandler<()>) -> Element 
 
                 // ── Total ──
                 div {
+                    class: "money-box",
                     style: "{theme::CARD} display:flex; justify-content:space-between; align-items:center; gap:12px;",
                     div {
                         div { style: "font-size:14px; font-weight:600; color:{theme::TEXT};", "{period}" }

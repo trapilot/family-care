@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 use crate::app::AppState;
-use crate::models::{Category, CurrencyInfo, Family, Holding, IdCardImage, Member, Transaction, Wallet};
+use crate::models::{Category, CreditCard, CurrencyInfo, Family, Holding, IdCardImage, Member, Transaction, Wallet};
 use crate::repository::{CategoryRepo, CurrencyRepo, FamilyRepo, HoldingRepo, IdCardRepo, SettingsRepo, TransactionRepo, WalletRepo};
 use crate::views::icons::{emoji_icon, Icon, IconName};
 use crate::views::pin::PinVerifyModal;
@@ -27,7 +27,7 @@ fn StatusBanner(text: String) -> Element {
     };
     rsx! {
         div {
-            style: "display:flex; align-items:flex-start; gap:8px; background:{bg}; color:{fg}; border-radius:12px; padding:10px 12px; font-size:13px; overflow-wrap:anywhere;",
+            style: "display:flex; align-items:flex-start; gap:8px; background:{bg}; color:{fg}; border-radius:0; padding:10px 12px; font-size:13px; overflow-wrap:anywhere;",
             if let Some(name) = icon {
                 Icon { name, size: 16, color: fg.to_string() }
             }
@@ -54,6 +54,9 @@ pub struct BackupData {
     /// Money types (names, units, order); missing in backups made before multi-currency wallets
     #[serde(default)]
     pub currencies: Vec<CurrencyInfo>,
+    /// Credit card statement settings; missing in backups made before they existed
+    #[serde(default)]
+    pub credit_cards: Vec<CreditCard>,
 }
 
 /// Dioxus desktop/mobile swaps clicks on file inputs for its own native dialog (app storage only).
@@ -262,11 +265,9 @@ pub fn BackupSettings() -> Element {
     let share = {
         let mut status = status.clone();
         move |file_path: PathBuf| {
-            let result = read_backup_file(&file_path);
-            match result {
-                Ok(json) => {
-                    let _ = share_backup(&json, &file_path);
-                    status.set(format!("✅ {} {}", t.t("Sharing backup"), file_path.display()));
+            match share_backup(&file_path, t.t("Share backup")) {
+                Ok(()) => {
+                    status.set(format!("✅ {}", t.t("Choose an app to share the backup")));
                 }
                 Err(e) => {
                     status.set(format!("❌ {}: {e}", t.t("Share failed")));
@@ -302,7 +303,7 @@ pub fn BackupSettings() -> Element {
 
             // ── App info ──
             div {
-                style: "background:#fff; border-radius:16px; padding:16px;",
+                style: "background:#fff; border-radius:0; padding:16px;",
                 div { style: "font-size:12px; color:{theme::TEXT_MUTED}; margin-bottom:4px;", "APP" }
                 div { style: "font-size:15px; font-weight:600; color:{theme::TEXT};", "Family Finance" }
                 div { style: "font-size:13px; color:{theme::TEXT_MUTED}; margin-top:2px;", {t.t("Version {version} · SQLite local storage").replace("{version}", &app_version.read())} }
@@ -310,7 +311,7 @@ pub fn BackupSettings() -> Element {
 
             // ── Export ──
             div {
-                style: "background:#fff; border-radius:16px; padding:16px;",
+                style: "background:#fff; border-radius:0; padding:16px;",
                 h2 { style: "margin:0 0 8px; font-size:14px; font-weight:600; color:{theme::TEXT};", {t.t("Export Backup")} }
                 p  { style: "margin:0 0 12px; font-size:13px; color:{theme::TEXT_MUTED}; line-height:1.5;",
                     {t.t("Export all wallets, holdings, categories, transactions, members and families as a .bk file.")}
@@ -328,7 +329,7 @@ pub fn BackupSettings() -> Element {
             // ── Existing backups ──
             if !backups.read().is_empty() {
                 div {
-                    style: "background:#fff; border-radius:16px; padding:16px;",
+                    style: "background:#fff; border-radius:0; padding:16px;",
                     h2 { style: "margin:0 0 8px; font-size:14px; font-weight:600; color:{theme::TEXT};", {t.t("Saved Backups")} }
                     div { style: "display:flex; flex-direction:column; gap:8px;",
                         for path in backups.read().iter() {
@@ -345,9 +346,9 @@ pub fn BackupSettings() -> Element {
 
             // ── Import from file ──
             div {
-                style: "background:#fff; border-radius:16px; padding:16px;",
+                style: "background:#fff; border-radius:0; padding:16px;",
                 h2 { style: "margin:0 0 8px; font-size:14px; font-weight:600; color:{theme::TEXT};", {t.t("Import from file")} }
-                p  { style: "margin:0 0 12px; font-size:13px; color:{theme::DANGER}; line-height:1.5; background:{theme::NEGATIVE_SOFT}; border-radius:12px; padding:10px 12px;",
+                p  { style: "margin:0 0 12px; font-size:13px; color:{theme::DANGER}; line-height:1.5; background:{theme::NEGATIVE_SOFT}; border-radius:0; padding:10px 12px;",
                     IconText { text: t.t("⚠️ Import will REPLACE all existing data. This cannot be undone. Pick a backup file (.bk) to import it.").to_string(), color: theme::DANGER.to_string(), gap: 8 }
                 }
                 label {
@@ -399,7 +400,7 @@ fn BackupFileItem(
 
     rsx! {
         div {
-            style: "display:flex; align-items:center; justify-content:space-between; padding:10px 12px; background:#f7f7fc; border-radius:12px;",
+            style: "display:flex; align-items:center; justify-content:space-between; padding:10px 12px; background:#f7f7fc; border-radius:0;",
             span {
                 style: "font-size:13px; color:{theme::TEXT}; overflow-wrap:anywhere;",
                 "{filename}"
@@ -448,7 +449,7 @@ fn TransactionPhotos() -> Element {
 
     rsx! {
         div {
-            style: "background:#fff; border-radius:16px; padding:16px;",
+            style: "background:#fff; border-radius:0; padding:16px;",
             h2 { style: "margin:0 0 6px; font-size:14px; font-weight:600; color:{theme::TEXT};", {t.t("Transaction photos")} }
             p { style: "margin:0 0 12px; font-size:13px; color:{theme::TEXT_MUTED}; line-height:1.5;",
                 {t.t("{count} photos · {size}. Deleting them makes the database smaller; the transactions stay.")
@@ -544,7 +545,7 @@ fn DangerZone() -> Element {
 
     rsx! {
         div {
-            style: "background:#fff; border-radius:16px; padding:16px; border:1px solid #fde3ea;",
+            style: "background:#fff; border-radius:0; padding:16px; border:1px solid #fde3ea;",
             h2 {
                 style: "margin:0 0 8px; font-size:14px; font-weight:600; color:{theme::DANGER}; display:flex; align-items:center; gap:8px;",
                 IconText { text: t.t("⚠️ Danger Zone").to_string(), color: theme::DANGER.to_string(), gap: 8 }
@@ -593,6 +594,7 @@ fn delete_all_data(conn: &rusqlite::Connection) -> crate::error::Result<()> {
         DELETE FROM members;
         DELETE FROM families;
         DELETE FROM wallet_balances;
+        DELETE FROM credit_cards;
         DELETE FROM wallets;
         DELETE FROM categories WHERE is_system = 0;
         COMMIT;
@@ -611,6 +613,11 @@ fn export_backup(conn: &rusqlite::Connection) -> crate::error::Result<String> {
     let families     = FamilyRepo::list(conn)?;
     let id_card_images = IdCardRepo::list_all(conn)?;
     let currencies   = CurrencyRepo::list(conn)?;
+    let credit_cards = {
+        let mut stmt = conn.prepare("SELECT * FROM credit_cards")?;
+        let rows = stmt.query_map([], CreditCard::from_row)?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()?
+    };
 
     let data = BackupData {
         app_version:  SettingsRepo::get_app_version(conn)?.unwrap_or_default(),
@@ -623,6 +630,7 @@ fn export_backup(conn: &rusqlite::Connection) -> crate::error::Result<String> {
         families,
         id_card_images,
         currencies,
+        credit_cards,
     };
 
     Ok(serde_json::to_string_pretty(&data)?)
@@ -656,6 +664,7 @@ fn import_backup(conn: &rusqlite::Connection, json: &str) -> crate::error::Resul
             DELETE FROM transactions;
             DELETE FROM holdings;
             DELETE FROM wallet_balances;
+            DELETE FROM credit_cards;
             DELETE FROM wallets;
             DELETE FROM categories WHERE is_system = 0;
             DELETE FROM member_id_images;
@@ -693,6 +702,20 @@ fn import_backup(conn: &rusqlite::Connection, json: &str) -> crate::error::Resul
                     rusqlite::params![w.id, b.currency.to_string(), crate::models::decimal_to_f64(b.balance)],
                 )?;
             }
+        }
+
+        // Credit card settings (after the wallets they reference)
+        for c in &data.credit_cards {
+            conn.execute(
+                "INSERT OR REPLACE INTO credit_cards
+                 (wallet_id,statement_day,due_day,credit_limit,paid_month,created_at)
+                 VALUES (?1,?2,?3,?4,?5,?6)",
+                rusqlite::params![
+                    c.wallet_id, c.statement_day, c.due_day,
+                    c.credit_limit.map(crate::models::decimal_to_f64),
+                    c.paid_month, c.created_at,
+                ],
+            )?;
         }
 
         // Money types: the rows always exist (seeded), only their details are restored
@@ -852,14 +875,26 @@ fn list_backup_files() -> Vec<PathBuf> {
     files
 }
 
+/// Backup file name: `YYYYMMDD_HHmmss.bk`.
+fn backup_file_name(dt: chrono::NaiveDateTime) -> String {
+    format!("{}.bk", dt.format("%Y%m%d_%H%M%S"))
+}
+
 fn save_to_backup_folder(json: &str) -> crate::error::Result<PathBuf> {
     use std::io::Write;
     use chrono::{Local, TimeZone};
     let backup_dir = ensure_backup_folder()?;
     let ts = crate::views::now_ts();
     let datetime = Local.timestamp_opt(ts, 0).single().unwrap_or_else(|| Local::now());
-    let filename = format!("{}.bk", datetime.format("%Y_%m_%d_%H_%M_%S"));
-    let path = backup_dir.join(filename);
+    let name = backup_file_name(datetime.naive_local());
+    let mut path = backup_dir.join(&name);
+    // Second precision can collide: never overwrite an existing backup
+    let stem = name.trim_end_matches(".bk").to_string();
+    let mut counter = 2;
+    while path.exists() {
+        path = backup_dir.join(format!("{stem}_{counter}.bk"));
+        counter += 1;
+    }
     let mut f = std::fs::File::create(&path)?;
     f.write_all(json.as_bytes())?;
     Ok(path)
@@ -893,38 +928,47 @@ fn read_backup_file(path: &PathBuf) -> crate::error::Result<String> {
     Ok(std::fs::read_to_string(path)?)
 }
 
-fn share_backup(json: &str, path: &PathBuf) -> crate::error::Result<()> {
-    // On web/desktop: try to download or copy to clipboard
-    // On mobile: use native share sheet
-    // For now, we'll just copy to clipboard and log
-    let js = format!(r#"
-        async function shareBackup() {{
-            try {{
-                // Try to copy to clipboard first
-                await navigator.clipboard.writeText('{}');
-                // Try to use Web Share API if available
-                if (navigator.share) {{
-                    const file = new File([`{}`], '{}', {{type: 'application/json'}});
-                    await navigator.share({{
-                        title: 'Family Finance Backup',
-                        text: 'Family Finance Backup File',
-                        files: [file]
-                    }});
-                }}
-            }} catch (e) {{
-                console.log('Sharing failed:', e);
-            }}
-        }}
-        shareBackup();
-    "#, json.replace('\\', "\\\\").replace('\'', "\\'"), json.replace('\\', "\\\\").replace('\'', "\\'"), path.file_name().unwrap_or_default().to_str().unwrap_or_default());
-    
-    let _ = dioxus::document::eval(&js);
-    Ok(())
+/// Opens the native share sheet for a backup file. The file contents never leave the app except
+/// through the app the user picks.
+fn share_backup(path: &std::path::Path, chooser_title: &str) -> crate::error::Result<()> {
+    if !path.exists() {
+        return Err(crate::error::AppError::NotFound(path.display().to_string()));
+    }
+    open_share_sheet(&path.to_string_lossy(), chooser_title)
+}
+
+#[cfg(target_os = "android")]
+fn open_share_sheet(path: &str, chooser_title: &str) -> crate::error::Result<()> {
+    if crate::android::share_file_sheet(path, chooser_title) {
+        Ok(())
+    } else {
+        Err(crate::error::AppError::Validation("Couldn't open the share sheet".into()))
+    }
+}
+
+#[cfg(target_os = "ios")]
+fn open_share_sheet(path: &str, _chooser_title: &str) -> crate::error::Result<()> {
+    if crate::share_ios::share_file(path) {
+        Ok(())
+    } else {
+        Err(crate::error::AppError::Validation("Couldn't open the share sheet".into()))
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn open_share_sheet(_path: &str, _chooser_title: &str) -> crate::error::Result<()> {
+    Err(crate::error::AppError::Validation("Sharing is only available on the phone".into()))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn backup_file_name_format() {
+        let dt = chrono::NaiveDate::from_ymd_opt(2026, 11, 3).unwrap().and_hms_opt(9, 5, 7).unwrap();
+        assert_eq!(backup_file_name(dt), "20261103_090507.bk");
+    }
 
     #[test]
     fn emoji_icon_strips_leading_emoji() {
@@ -962,8 +1006,10 @@ mod tests {
                 start_date: 1, repeat_unit: RepeatUnit::Month, repeat_every: 1,
             }).unwrap();
 
+            crate::repository::CreditCardRepo::upsert(&conn, &wallet.id, 5, 25, None).unwrap();
+
             delete_all_data(&conn).unwrap();
-            for table in ["wallets", "wallet_balances", "transactions", "transaction_images", "reminders", "bills", "holdings", "members", "families", "member_id_images"] {
+            for table in ["wallets", "wallet_balances", "transactions", "transaction_images", "reminders", "bills", "credit_cards", "holdings", "members", "families", "member_id_images"] {
                 assert_eq!(count(&conn, table), 0, "{table} not empty (foreign_keys {foreign_keys})");
             }
         }
@@ -988,6 +1034,25 @@ mod tests {
         assert_eq!(w.balance(&Currency::VND), Decimal::from(5_000));
         assert_eq!(w.balance(&Currency::GOLD), Decimal::from(3));
         assert_eq!(w.balance(&Currency::USD), Decimal::ZERO);
+    }
+
+    #[test]
+    fn export_then_import_keeps_credit_card_settings() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        crate::db::migrations::run(&conn).unwrap();
+        let wallet = WalletRepo::create(&conn, &NewWallet {
+            name: "Visa".into(), wallet_type: WalletType::CreditCard, broker: None, icon: None, color: None, sort_order: 0,
+        }).unwrap();
+        crate::repository::CreditCardRepo::upsert(&conn, &wallet.id, 10, 28, Some(Decimal::from(20_000_000))).unwrap();
+        crate::repository::CreditCardRepo::set_paid_month(&conn, &wallet.id, Some("2026-10")).unwrap();
+        let before = crate::repository::CreditCardRepo::get(&conn, &wallet.id).unwrap().unwrap();
+
+        let json = export_backup(&conn).unwrap();
+        import_backup(&conn, &json).unwrap();
+
+        let after = crate::repository::CreditCardRepo::get(&conn, &wallet.id).unwrap().unwrap();
+        assert_eq!(after, before);
+        assert_eq!(after.paid_month.as_deref(), Some("2026-10"));
     }
 
     #[test]

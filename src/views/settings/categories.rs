@@ -78,7 +78,7 @@ fn CatList(
             // ── User categories ──
             if !user_cats.is_empty() {
                 div {
-                    style: "background:#fff; border-radius:16px; overflow:hidden;",
+                    style: "background:#fff; border-radius:0; overflow:hidden;",
                     SectionLabel { text: t.t("Custom") }
                     for cat in user_cats.iter() {
                         CatRow {
@@ -99,7 +99,7 @@ fn CatList(
             // ── System categories (read-only) ──
             if !system_cats.is_empty() {
                 div {
-                    style: "background:#fff; border-radius:16px; overflow:hidden;",
+                    style: "background:#fff; border-radius:0; overflow:hidden;",
                     SectionLabel { text: t.t("System (read-only)") }
                     for cat in system_cats.iter() {
                         CatRow {
@@ -286,7 +286,7 @@ fn CatForm(
 
             if !error_msg.read().is_empty() {
                 div {
-                    style: "background:{theme::NEGATIVE_SOFT}; border-radius:12px; padding:10px 12px; font-size:13px; color:{theme::DANGER};",
+                    style: "background:{theme::NEGATIVE_SOFT}; border-radius:0; padding:10px 12px; font-size:13px; color:{theme::DANGER};",
                     "{error_msg.read()}"
                 }
             }

@@ -8,6 +8,8 @@ mod models;
 mod notify;
 mod repository;
 mod services;
+#[cfg(target_os = "ios")]
+mod share_ios;
 mod views;
 
 use std::path::PathBuf;

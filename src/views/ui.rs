@@ -168,33 +168,63 @@ pub fn IconTile(
     icon_box(icon, fallback, &color, size, filled, "12px")
 }
 
-#[component]
-pub fn MonthSwitcher(year: i32, month: u32, on_change: EventHandler<(i32, u32)>) -> Element {
-    let prev = if month == 1 { (year - 1, 12) } else { (year, month - 1) };
-    let next = if month == 12 { (year + 1, 1) } else { (year, month + 1) };
+/// 40x40 prev/next month button (double chevron)
+fn month_nav_button(target: (i32, u32), next: bool, on_change: EventHandler<(i32, u32)>) -> Element {
+    let t = use_i18n();
+    let (icon, label) = if next {
+        (IconName::ChevronsRight, t.t("Next month"))
+    } else {
+        (IconName::ChevronsLeft, t.t("Previous month"))
+    };
     rsx! {
-        div {
-            style: "display:flex; align-items:center; justify-content:center; gap:12px;",
-            button {
-                style: "border:none; background:transparent; cursor:pointer; padding:0; width:32px; height:32px; display:flex; align-items:center; justify-content:center;",
-                onclick: move |_| on_change.call(prev),
-                Icon { name: IconName::ChevronsLeft, size: 28, color: theme::MONTH_FG.to_string() }
-            }
-            span {
-                style: "display:inline-flex; align-items:center; gap:8px; background:{theme::MONTH_BG}; color:{theme::MONTH_FG}; border-radius:999px; padding:8px 20px; font-weight:700; font-size:15px; text-transform:uppercase;",
-                Icon { name: IconName::Calendar, size: 18 }
-                "{month_label(year, month)}"
-            }
-            button {
-                style: "border:none; background:transparent; cursor:pointer; padding:0; width:32px; height:32px; display:flex; align-items:center; justify-content:center;",
-                onclick: move |_| on_change.call(next),
-                Icon { name: IconName::ChevronsRight, size: 28, color: theme::TEXT.to_string() }
-            }
+        button {
+            style: "border:none; background:transparent; cursor:pointer; padding:0; width:40px; height:40px; flex-shrink:0; display:flex; align-items:center; justify-content:center;",
+            aria_label: "{label}",
+            onclick: move |_| on_change.call(target),
+            Icon { name: icon, size: 28, color: theme::TEXT.to_string() }
         }
     }
 }
 
-/// Top band: month switcher (or the screen title) centered, with a right-hand action
+fn month_pill(year: i32, month: u32) -> Element {
+    // A future month (nothing recorded yet) is shown in gray
+    let (bg, fg) = if (year, month) > crate::views::current_month() {
+        (theme::BORDER, theme::TEXT_MUTED)
+    } else {
+        (theme::MONTH_BG, theme::MONTH_FG)
+    };
+    rsx! {
+        span {
+            style: "display:inline-flex; align-items:center; gap:8px; background:{bg}; color:{fg}; border-radius:999px; padding:8px 20px; font-weight:700; font-size:15px; text-transform:uppercase;",
+            Icon { name: IconName::Calendar, size: 18 }
+            "{month_label(year, month)}"
+        }
+    }
+}
+
+fn prev_month(year: i32, month: u32) -> (i32, u32) {
+    if month == 1 { (year - 1, 12) } else { (year, month - 1) }
+}
+
+fn next_month(year: i32, month: u32) -> (i32, u32) {
+    if month == 12 { (year + 1, 1) } else { (year, month + 1) }
+}
+
+/// Compact centered variant: « pill »
+#[component]
+#[allow(dead_code)]
+pub fn MonthSwitcher(year: i32, month: u32, on_change: EventHandler<(i32, u32)>) -> Element {
+    rsx! {
+        div {
+            style: "display:flex; align-items:center; justify-content:center; gap:4px;",
+            {month_nav_button(prev_month(year, month), false, on_change)}
+            {month_pill(year, month)}
+            {month_nav_button(next_month(year, month), true, on_change)}
+        }
+    }
+}
+
+/// Top band: [« prev] [month pill or title] [action] [» next]
 #[component]
 pub fn AppHeader(
     title: String,
@@ -202,17 +232,31 @@ pub fn AppHeader(
     #[props(default)] on_month: Option<EventHandler<(i32, u32)>>,
     #[props(default)] action: Option<Element>,
 ) -> Element {
+    let style = format!("background:{}; padding:10px 8px; min-height:56px; box-sizing:border-box; color:{}; display:flex; align-items:center;", theme::HEADER_BG, theme::TEXT);
+    if let (Some((year, month)), Some(on_month)) = (month, on_month) {
+        let on_change = EventHandler::new(move |ym| on_month.call(ym));
+        return rsx! {
+            div {
+                style: "{style}",
+                {month_nav_button(prev_month(year, month), false, on_change)}
+                div {
+                    style: "flex:1; min-width:0; display:flex; justify-content:center;",
+                    {month_pill(year, month)}
+                }
+                if let Some(action) = action {
+                    div { style: "flex-shrink:0; display:flex; align-items:center;", {action} }
+                }
+                {month_nav_button(next_month(year, month), true, on_change)}
+            }
+        };
+    }
     rsx! {
         div {
-            style: "background:{theme::HEADER_BG}; padding:10px 8px; min-height:56px; box-sizing:border-box; color:{theme::TEXT}; display:flex; align-items:center;",
+            style: "{style}",
             div { style: "width:40px; flex-shrink:0;" }
             div {
                 style: "flex:1; min-width:0; display:flex; justify-content:center; text-align:center;",
-                if let (Some((year, month)), Some(on_month)) = (month, on_month) {
-                    MonthSwitcher { year, month, on_change: move |ym| on_month.call(ym) }
-                } else {
-                    div { style: "font-size:17px; font-weight:600; color:{theme::TEXT}; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;", "{title}" }
-                }
+                div { style: "font-size:17px; font-weight:600; color:{theme::TEXT}; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;", "{title}" }
             }
             div { style: "width:40px; flex-shrink:0; display:flex; justify-content:flex-end;",
                 if let Some(action) = action { {action} }

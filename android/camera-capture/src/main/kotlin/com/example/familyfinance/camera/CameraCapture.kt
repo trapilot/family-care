@@ -1,6 +1,7 @@
 package com.example.familyfinance.camera
 
 import android.app.Activity
+import android.content.ClipData
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -156,6 +157,34 @@ class CameraCapture(private val activity: Activity) {
             return ""
         } finally {
             bitmap?.recycle()
+        }
+    }
+
+    /** Opens the system share sheet (app chooser) for a file in filesDir/backup. Returns 1 if started, 0 if not. */
+    fun shareFile(path: String, chooserTitle: String): Int {
+        try {
+            val file = File(path)
+            if (!file.isFile) return 0
+            val uri = FileProvider.getUriForFile(activity, activity.packageName + ".fileprovider", file)
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = "application/octet-stream"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_SUBJECT, file.name)
+                clipData = ClipData.newRawUri(file.name, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            val chooser = Intent.createChooser(send, chooserTitle)
+            activity.runOnUiThread {
+                try {
+                    activity.startActivity(chooser)
+                } catch (t: Throwable) {
+                    Log.w(TAG, "shareFile failed", t)
+                }
+            }
+            return 1
+        } catch (t: Throwable) {
+            Log.e(TAG, "shareFile failed", t)
+            return 0
         }
     }
 

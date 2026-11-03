@@ -238,7 +238,7 @@ pub fn MemberForm(view: Signal<MemberView>, editing: Option<Member>) -> Element 
 
             if *show_id.read() {
                 div {
-                    style: "background:{theme::BG}; border-radius:16px; padding:14px; display:flex; flex-direction:column; gap:12px;",
+                    style: "background:{theme::BG}; border-radius:0; padding:14px; display:flex; flex-direction:column; gap:12px;",
                     Label { text: t.t("ID Number") }
                     TextInput { value: id_number.read().clone(), placeholder: "", on_input: move |v| { id_number.set(v); } }
                     Label { text: t.t("Issue Date") }
@@ -257,7 +257,7 @@ pub fn MemberForm(view: Signal<MemberView>, editing: Option<Member>) -> Element 
             // ── Error ──
             if !error_msg.read().is_empty() {
                 div {
-                    style: "background:{theme::NEGATIVE_SOFT}; border-radius:12px; padding:10px 12px; font-size:13px; color:{theme::DANGER};",
+                    style: "background:{theme::NEGATIVE_SOFT}; border-radius:0; padding:10px 12px; font-size:13px; color:{theme::DANGER};",
                     "{error_msg.read()}"
                 }
             }

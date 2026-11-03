@@ -53,7 +53,7 @@ pub fn PinSetup(on_set: EventHandler) -> Element {
             
             if let Some(err) = error.read().clone() {
                 div {
-                    style: "width:100%; max-width:300px; box-sizing:border-box; background:{theme::NEGATIVE_SOFT}; border-radius:12px; padding:12px 14px; color:{theme::DANGER}; font-weight:600; text-align:center; font-size:14px;",
+                    style: "width:100%; max-width:300px; box-sizing:border-box; background:{theme::NEGATIVE_SOFT}; border-radius:0; padding:12px 14px; color:{theme::DANGER}; font-weight:600; text-align:center; font-size:14px;",
                     "{err}"
                 }
             }
@@ -145,7 +145,7 @@ pub fn PinUnlock(on_unlock: EventHandler, on_reset: EventHandler) -> Element {
             
             if let Some(err) = error.read().clone() {
                 div {
-                    style: "width:100%; max-width:300px; box-sizing:border-box; background:{theme::NEGATIVE_SOFT}; border-radius:12px; padding:12px 14px; color:{theme::DANGER}; font-weight:600; text-align:center; font-size:14px;",
+                    style: "width:100%; max-width:300px; box-sizing:border-box; background:{theme::NEGATIVE_SOFT}; border-radius:0; padding:12px 14px; color:{theme::DANGER}; font-weight:600; text-align:center; font-size:14px;",
                     "{err}"
                 }
             }

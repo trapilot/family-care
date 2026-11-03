@@ -60,6 +60,7 @@ pub fn Settings() -> Element {
                     SettingsTab::Reminders  => rsx! { RemindersSettings {} },
                     SettingsTab::Backup     => rsx! { BackupSettings {} },
                 }
+                FeedbackCard {}
             }
         }
     }
@@ -95,6 +96,35 @@ fn LanguageSelect() -> Element {
                 for lang in Lang::ALL {
                     option { value: lang.code(), selected: lang == current, "{lang.native_name()}" }
                 }
+            }
+        }
+    }
+}
+
+// ─── FeedbackCard ─────────────────────────────────────────────────────────────
+
+/// Suggestions & feedback: shows the contact email address.
+#[component]
+fn FeedbackCard() -> Element {
+    let t = use_i18n();
+    let email = crate::views::FEEDBACK_EMAIL;
+
+    rsx! {
+        div {
+            style: "{theme::CARD} margin-top:24px; display:flex; flex-direction:column; gap:10px;",
+            div {
+                style: "display:flex; align-items:center; gap:8px; font-weight:700; font-size:16px; color:{theme::TEXT};",
+                Icon { name: IconName::Mail, size: 20, color: theme::PRIMARY.to_string() }
+                "{t.t(\"Suggestions & feedback\")}"
+            }
+            div {
+                style: "font-size:14px; color:{theme::TEXT_MUTED};",
+                "{t.t(\"Have an idea or found a bug? Email us — every suggestion is welcome.\")}"
+            }
+            div {
+                style: "font-size:14px; color:{theme::TEXT};",
+                span { style: "color:{theme::TEXT_MUTED};", {t.t("Contact:")} " " }
+                span { style: "font-weight:600; user-select:text;", "{email}" }
             }
         }
     }

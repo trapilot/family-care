@@ -8,7 +8,7 @@ use crate::app::{AppState, SelectedMonth};
 use crate::services::report_service::ExpenseByCategoryItem;
 use crate::services::{ReminderService, ReportService};
 use crate::views::fmt_vnd;
-use crate::views::icons::IconName;
+use crate::views::icons::{Icon, IconName};
 use crate::views::ui::{AppHeader, IconCircle, IconText, SectionTitle};
 use crate::views::theme;
 
@@ -83,7 +83,7 @@ pub fn Dashboard() -> Element {
     let (year, month) = selected();
     let s = summary.read().clone();
     let balance = s.income - s.expense;
-    let balance_color = if balance >= Decimal::ZERO { theme::POSITIVE } else { theme::NEGATIVE };
+    let balance_color = if balance < Decimal::ZERO { theme::DANGER } else { theme::TEXT };
 
     // Average tiles
     let days = {
@@ -117,64 +117,34 @@ pub fn Dashboard() -> Element {
             div {
                 style: "padding:16px; display:flex; flex-direction:column; gap:16px;",
 
-                // ── Balance ──
+                // ── Hero money box ──
                 div {
-                    div { style: "text-align:center; font-size:13px; color:{theme::TEXT};", {t.t("Balance")} }
-                    div { style: "text-align:center; font-size:19px; font-weight:600; color:{balance_color}; margin-bottom:10px;", "{fmt_vnd(balance)}" }
+                    class: "money-box",
+                    style: "background:#fff; color:{theme::TEXT}; border:1px solid {theme::BORDER}; border-top:4px solid {theme::PRIMARY}; padding:18px 16px;",
+                    div { style: "font-size:13px; font-weight:600; color:{theme::TEXT_MUTED};", {t.t("Balance")} }
                     div {
-                        style: "display:grid; grid-template-columns:1fr 1fr; gap:8px;",
+                        style: "font-size:28px; font-weight:700; overflow-wrap:anywhere; color:{balance_color};",
+                        "{fmt_vnd(balance)}"
+                    }
+                    div { style: "border-top:1px solid {theme::BORDER}; margin:14px 0 12px;" }
+                    div {
+                        style: "display:grid; grid-template-columns:1fr 1fr; gap:12px;",
                         div {
-                            style: "background:{theme::NEGATIVE}; color:#fff; border-radius:{theme::CARD_RADIUS}; padding:12px; text-align:center;",
-                            div { style: "font-size:13px;", {t.t("Expense")} }
-                            div { style: "font-size:19px; font-weight:600; overflow-wrap:anywhere;", "{fmt_vnd(s.expense)}" }
+                            div { style: "font-size:12px; font-weight:600; color:{theme::TEXT_MUTED};", {t.t("Income")} }
+                            div { style: "font-size:17px; font-weight:700; color:{theme::POSITIVE}; overflow-wrap:anywhere;", "{fmt_vnd(s.income)}" }
                         }
                         div {
-                            style: "background:{theme::POSITIVE_SOFT}; color:{theme::TEXT}; border-radius:{theme::CARD_RADIUS}; padding:12px; text-align:center;",
-                            div { style: "font-size:13px;", {t.t("Income")} }
-                            div { style: "font-size:19px; font-weight:600; color:{theme::POSITIVE}; overflow-wrap:anywhere;", "{fmt_vnd(s.income)}" }
+                            style: "text-align:right;",
+                            div { style: "font-size:12px; font-weight:600; color:{theme::TEXT_MUTED};", {t.t("Expense")} }
+                            div { style: "font-size:17px; font-weight:700; color:{theme::DANGER}; overflow-wrap:anywhere;", "{fmt_vnd(s.expense)}" }
                         }
                     }
-                }
-
-                // ── Averages ──
-                div {
-                    style: "display:grid; grid-template-columns:repeat(2,1fr); gap:6px;",
-                    for (label, value) in [
-                        (t.t("Day (avg.)"), day_avg),
-                        (t.t("Month"), s.expense),
-                    ] {
-                        div {
-                            style: "background:#fbeef2; border-radius:14px; padding:10px 6px; text-align:center;",
-                            div { style: "font-size:12px; color:{theme::TEXT_MUTED};", "{label}" }
-                            div {
-                                style: if value.is_zero() { "font-size:14px; font-weight:600; color:#8a8d9f; overflow-wrap:anywhere;" } else { "font-size:14px; font-weight:600; color:#1f2133; overflow-wrap:anywhere;" },
-                                "{fmt_vnd(value)}"
-                            }
-                        }
-                    }
-                }
-
-                // ── Top categories ──
-                div {
-                    style: "display:flex; flex-direction:column; gap:14px;",
-                    SectionTitle { title: t.t("Expense").to_string() }
-                    if cat_items.is_empty() {
-                        div { style: "text-align:center; color:{theme::TEXT_MUTED}; font-size:14px; padding:8px 0;", {t.t("No expenses this month")} }
-                    }
-                    for item in cat_items.iter().take(shown_cats) {
-                        CategoryRow { item: item.clone() }
-                    }
-                    if cat_items.len() > 3 {
-                        div {
-                            style: "display:flex; align-items:center; gap:12px; cursor:pointer;",
-                            onclick: move |_| show_all.set(!show_all()),
-                            span {
-                                style: "display:inline-flex; transform:{more_rotate};",
-                                IconCircle { icon: None, fallback: IconName::ChevronDown, color: theme::TEXT_MUTED.to_string(), size: 48 }
-                            }
-                            span { style: "font-size:15px; color:{theme::TEXT};",
-                                if show_all() { {t.t("Less")} } else { {t.t("More…")} }
-                            }
+                    div {
+                        style: "margin-top:12px; background:{theme::PRIMARY_SOFT}; color:{theme::PRIMARY}; padding:10px 12px; display:flex; justify-content:space-between; align-items:center; gap:8px;",
+                        span { style: "font-size:13px; font-weight:600;", {t.t("Day (avg.)")} }
+                        span {
+                            style: if day_avg.is_zero() { "font-size:16px; font-weight:700; opacity:.6;" } else { "font-size:16px; font-weight:700;" },
+                            "{fmt_vnd(day_avg)}"
                         }
                     }
                 }
@@ -182,13 +152,13 @@ pub fn Dashboard() -> Element {
                 // ── Reminders due today ──
                 if !due_today.read().is_empty() || !unpaid_bills.read().is_empty() {
                     div {
-                        style: "{theme::CARD} display:flex; flex-direction:column; gap:8px;",
+                        style: "background:#fff; border:1px solid {theme::BORDER}; border-left:3px solid {theme::PRIMARY}; padding:12px 14px; display:flex; flex-direction:column;",
                         h2 {
-                            style: "margin:0; font-size:14px; font-weight:600; color:{theme::PRIMARY}; display:flex; align-items:center; gap:6px;",
+                            style: "margin:0; font-size:14px; font-weight:600; color:{theme::PRIMARY}; display:flex; align-items:center; gap:6px; padding-bottom:8px;",
                             IconText { text: t.t("🔔 Due today").to_string(), size: 18 }
                         }
                         for (id, title, body, done) in due_today.read().iter().cloned() {
-                            div { style: "display:flex; gap:10px; align-items:center;",
+                            div { style: "display:flex; gap:10px; align-items:center; padding:8px 0; border-top:1px solid #e6e6ef;",
                                 div { style: if done { "flex:1; min-width:0; opacity:.55;" } else { "flex:1; min-width:0;" },
                                     div { style: "font-size:13px; font-weight:600; color:{theme::TEXT};", IconText { text: title, size: 14 } }
                                     div { style: "font-size:13px; color:{theme::TEXT}; overflow-wrap:anywhere;", IconText { text: body, size: 14 } }
@@ -197,7 +167,7 @@ pub fn Dashboard() -> Element {
                                     span { style: "font-size:12px; color:{theme::POSITIVE}; font-weight:600; flex-shrink:0;", IconText { text: t.t("✓ Done").to_string(), size: 14, gap: 4 } }
                                 } else {
                                     button {
-                                        style: "border:none; background:{theme::PRIMARY}; color:#fff; border-radius:999px; padding:6px 12px; font-size:12px; font-weight:600; cursor:pointer; flex-shrink:0;",
+                                        style: "border:none; background:{theme::PRIMARY}; color:#fff; padding:6px 12px; font-size:12px; font-weight:600; cursor:pointer; flex-shrink:0;",
                                         onclick: {
                                             let state = state.clone();
                                             let mut load_due = load_due.clone();
@@ -213,13 +183,13 @@ pub fn Dashboard() -> Element {
                             }
                         }
                         for (id, month, title, body) in unpaid_bills.read().iter().cloned() {
-                            div { style: "display:flex; gap:10px; align-items:center;",
+                            div { style: "display:flex; gap:10px; align-items:center; padding:8px 0; border-top:1px solid #e6e6ef;",
                                 div { style: "flex:1; min-width:0;",
                                     div { style: "font-size:13px; font-weight:600; color:{theme::NEGATIVE};", IconText { text: title, size: 14 } }
                                     div { style: "font-size:13px; color:{theme::TEXT}; overflow-wrap:anywhere;", IconText { text: body, size: 14 } }
                                 }
                                 button {
-                                    style: "border:none; background:{theme::POSITIVE}; color:#fff; border-radius:999px; padding:6px 12px; font-size:12px; font-weight:600; cursor:pointer; flex-shrink:0;",
+                                    style: "border:none; background:{theme::POSITIVE}; color:#fff; padding:6px 12px; font-size:12px; font-weight:600; cursor:pointer; flex-shrink:0;",
                                     onclick: {
                                         let state = state.clone();
                                         let mut load_due = load_due.clone();
@@ -238,7 +208,7 @@ pub fn Dashboard() -> Element {
                 // ── Overspending Alerts ──
                 if !alerts.read().is_empty() {
                     div {
-                        style: "{theme::CARD}",
+                        style: "background:#fff; border:1px solid {theme::BORDER}; border-left:3px solid {theme::NEGATIVE}; padding:12px 14px;",
                         h2 {
                             style: "margin:0 0 10px; font-size:14px; font-weight:600; color:{theme::NEGATIVE}; display:flex; align-items:center; gap:6px;",
                             IconText { text: t.t("⚠️ Overspending").to_string(), size: 18 }
@@ -251,6 +221,35 @@ pub fn Dashboard() -> Element {
                                     style: "text-align:right;",
                                     div { style: "font-size:12px; color:{theme::NEGATIVE}; font-weight:600;", "+{fmt_vnd(alert.overage)}" }
                                     div { style: "font-size:11px; color:{theme::TEXT_MUTED};", "{fmt_vnd(alert.spent)} / {fmt_vnd(alert.budget)}" }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ── Top categories ──
+                div {
+                    style: "display:flex; flex-direction:column; gap:14px;",
+                    SectionTitle { title: t.t("Expense").to_string() }
+                    div {
+                        style: "background:#fff; border:1px solid {theme::BORDER};",
+                        if cat_items.is_empty() {
+                            div { style: "text-align:center; color:{theme::TEXT_MUTED}; font-size:14px; padding:12px 14px;", {t.t("No expenses this month")} }
+                        }
+                        for (i, item) in cat_items.iter().take(shown_cats).enumerate() {
+                            div {
+                                style: if i == 0 { "padding:12px 14px;" } else { "padding:12px 14px; border-top:1px solid #e6e6ef;" },
+                                CategoryRow { item: item.clone() }
+                            }
+                        }
+                        if cat_items.len() > 3 {
+                            button {
+                                style: "width:100%; border:none; border-top:1px solid #e6e6ef; background:transparent; color:{theme::PRIMARY}; font-size:14px; padding:12px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;",
+                                onclick: move |_| show_all.set(!show_all()),
+                                span { if show_all() { {t.t("Less")} } else { {t.t("More…")} } }
+                                span {
+                                    style: "display:inline-flex; transform:{more_rotate};",
+                                    Icon { name: IconName::ChevronDown, size: 16, color: theme::PRIMARY.to_string() }
                                 }
                             }
                         }
@@ -273,7 +272,7 @@ pub fn CategoryRow(item: ExpenseByCategoryItem) -> Element {
     rsx! {
         div {
             style: "display:flex; align-items:center; gap:12px;",
-            IconCircle { icon: item.icon.clone(), fallback: IconName::Package, color, size: 48 }
+            IconCircle { icon: item.icon.clone(), fallback: IconName::Package, color, size: 40 }
             div { style: "flex:1; min-width:0;",
                 div { style: "display:flex; justify-content:space-between; gap:8px; align-items:baseline;",
                     span { style: "font-size:15px; color:{theme::TEXT};", {t.tr(&item.category_name)} }
@@ -281,8 +280,8 @@ pub fn CategoryRow(item: ExpenseByCategoryItem) -> Element {
                 }
                 div { style: "display:flex; align-items:center; gap:8px; margin-top:4px;",
                     span { style: "font-size:12px; color:{theme::TEXT_MUTED}; min-width:36px;", "{pct:.0}%" }
-                    div { style: "flex:1; height:6px; background:#eeeef4; border-radius:3px; overflow:hidden;",
-                        div { style: "height:100%; width:{pct}%; background:{bar_color}; border-radius:3px;" }
+                    div { style: "flex:1; height:4px; background:#eeeef4; overflow:hidden;",
+                        div { style: "height:100%; width:{pct}%; background:{bar_color};" }
                     }
                 }
             }

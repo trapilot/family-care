@@ -298,7 +298,8 @@ fn StatBox(label: &'static str, value: String, color: &'static str, onclick: Opt
     let clickable = onclick.is_some();
     rsx! {
         div {
-            style: if clickable { "background:#f7f7fc; border-radius:12px; padding:10px; cursor:pointer;" } else { "background:#f7f7fc; border-radius:12px; padding:10px;" },
+            class: "money-box",
+            style: if clickable { "background:#f7f7fc; border-radius:0; padding:10px; cursor:pointer;" } else { "background:#f7f7fc; border-radius:0; padding:10px;" },
             onclick: move |e| if let Some(h) = &onclick { h.call(e) },
             div { style: "font-size:12px; color:{theme::TEXT_MUTED}; margin-bottom:2px; display:flex; justify-content:space-between; align-items:center;",
                 span { "{label}" }

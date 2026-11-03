@@ -184,7 +184,7 @@ fn RateRow(currency: Currency, unit: String) -> Element {
                 div { style: "font-size:13px; color:{theme::TEXT_MUTED};", "1 {unit} = ? ₫" }
                 div { style: "display:flex; gap:6px; align-items:center;",
                     AmountInput {
-                        style: "flex:1; min-width:0; box-sizing:border-box; border:1px solid #3f51b5; border-radius:12px; padding:10px 12px; font-size:15px; outline:none; color:#1f2133;",
+                        style: "flex:1; min-width:0; box-sizing:border-box; border:1px solid #3f51b5; border-radius:0; padding:10px 12px; font-size:15px; outline:none; color:#1f2133;",
                         value: input(),
                         placeholder: t.t("Empty = no rate").to_string(),
                         oninput: move |v| input.set(v),

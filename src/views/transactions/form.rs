@@ -533,12 +533,12 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
             FieldLabel { label: t.t("Photos (optional)") }
             div { style: "display:flex; gap:8px;",
                 label {
-                    style: "flex:1; padding:12px; border:1px dashed #3f51b5; border-radius:12px; background:#e2e5f7; color:#3f51b5; font-size:14px; font-weight:600; text-align:center; cursor:pointer; display:flex; align-items:center; justify-content:center;",
+                    style: "flex:1; padding:12px; border:1px dashed #3f51b5; border-radius:0; background:#e2e5f7; color:#3f51b5; font-size:14px; font-weight:600; text-align:center; cursor:pointer; display:flex; align-items:center; justify-content:center;",
                     IconText { text: t.t("🖼 Upload").to_string() }
                     PhotoInput { key_name: "txn", multiple: true }
                 }
                 label {
-                    style: "flex:1; padding:12px; border:1px dashed #3f51b5; border-radius:12px; background:#e2e5f7; color:#3f51b5; font-size:14px; font-weight:600; text-align:center; cursor:pointer; display:flex; align-items:center; justify-content:center;",
+                    style: "flex:1; padding:12px; border:1px dashed #3f51b5; border-radius:0; background:#e2e5f7; color:#3f51b5; font-size:14px; font-weight:600; text-align:center; cursor:pointer; display:flex; align-items:center; justify-content:center;",
                     IconText { text: t.t("📷 Camera").to_string() }
                     PhotoInput { key_name: "txn", camera: true }
                 }
@@ -552,7 +552,7 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
                         div { key: "{i}", style: "position:relative; width:76px; height:76px;",
                             img {
                                 src,
-                                style: "width:100%; height:100%; object-fit:cover; border-radius:12px; border:1px solid #e6e6ef; cursor:pointer;",
+                                style: "width:100%; height:100%; object-fit:cover; border-radius:0; border:1px solid #e6e6ef; cursor:pointer;",
                                 onclick: move |_| preview.set(Some(i)),
                             }
                             button {
@@ -626,7 +626,7 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
             // ── Error ──
             if !error_msg.read().is_empty() {
                 div {
-                    style: "background:{theme::NEGATIVE_SOFT}; border-radius:12px; padding:10px 12px; font-size:13px; color:{theme::DANGER};",
+                    style: "background:{theme::NEGATIVE_SOFT}; border-radius:0; padding:10px 12px; font-size:13px; color:{theme::DANGER};",
                     "{error_msg.read()}"
                 }
             }
@@ -663,7 +663,7 @@ fn FieldLabel(label: &'static str) -> Element {
 }
 
 /// Amount input sharing its row with a `CurrencySelect`
-const AMOUNT_WITH_CURRENCY_STYLE: &str = "flex:1; min-width:0; box-sizing:border-box; border:1px solid #e6e6ef; border-radius:12px; padding:12px 14px; font-size:15px; outline:none; background:#fff; color:#1f2133;";
+const AMOUNT_WITH_CURRENCY_STYLE: &str = "flex:1; min-width:0; box-sizing:border-box; border:1px solid #e6e6ef; border-radius:0; padding:12px 14px; font-size:15px; outline:none; background:#fff; color:#1f2133;";
 
 /// Active money types with their display names; `selected` is appended when it is hidden,
 /// so an old transaction in a hidden type still shows its type
@@ -683,7 +683,7 @@ fn currency_options(t: &crate::i18n::I18n, list: &[CurrencyInfo], selected: &Cur
 fn CurrencySelect(value: Currency, options: Vec<(Currency, String)>, onchange: EventHandler<Currency>) -> Element {
     rsx! {
         select {
-            style: "flex-shrink:0; width:120px; box-sizing:border-box; border:1px solid #e6e6ef; border-radius:12px; padding:12px 8px; font-size:14px; font-weight:600; outline:none; background:#fff; color:#1f2133;",
+            style: "flex-shrink:0; width:120px; box-sizing:border-box; border:1px solid #e6e6ef; border-radius:0; padding:12px 8px; font-size:14px; font-weight:600; outline:none; background:#fff; color:#1f2133;",
             onchange: move |e| {
                 if let Ok(c) = e.value().parse::<Currency>() { onchange.call(c); }
             },

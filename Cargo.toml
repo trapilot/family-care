@@ -33,7 +33,10 @@ base64        = "0.22"
 [target.'cfg(target_os = "ios")'.dependencies]
 objc2                    = "0.6"
 block2                   = "0.6"
-objc2-foundation         = { version = "0.3", features = ["NSString", "NSError", "NSArray", "NSSet"] }
+objc2-foundation         = { version = "0.3", features = ["NSString", "NSError", "NSArray", "NSSet", "NSURL", "NSGeometry"] }
+# Share sheet for backup files (UIActivityViewController)
+objc2-ui-kit             = { version = "0.3", default-features = false, features = ["std", "UIActivity", "UIActivityViewController", "block2", "UIViewController", "UIApplication", "UIWindow", "UIWindowScene", "UIScene", "UIResponder", "UIView", "UIPopoverPresentationController", "UIPresentationController"] }
+dispatch2                = "0.3"
 objc2-user-notifications = { version = "0.3", features = ["UNUserNotificationCenter", "UNNotificationContent", "UNNotificationRequest", "UNNotificationTrigger", "UNNotificationSound", "UNNotification", "UNNotificationResponse", "UNNotificationAction", "UNNotificationCategory", "block2"] }
 
 # Bundles android/camera-capture into the Android app (FileProvider for `capture` inputs)

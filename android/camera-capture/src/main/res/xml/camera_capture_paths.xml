@@ -2,4 +2,5 @@
 <!-- Where wry writes captured photos: getExternalFilesDir(DIRECTORY_PICTURES) -->
 <paths>
     <external-files-path name="camera_captures" path="Pictures/" />
+    <files-path name="backups" path="backup/" />
 </paths>

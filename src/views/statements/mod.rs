@@ -164,14 +164,14 @@ pub fn Statements() -> Element {
                 style: "flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:12px;",
 
                 if let Some(s) = status {
-                    div { style: "padding:12px 14px; border-radius:12px; background:{theme::PRIMARY_SOFT}; color:{theme::PRIMARY}; font-size:13px; display:flex; align-items:center; gap:8px;",
+                    div { style: "padding:12px 14px; border-radius:0; background:{theme::PRIMARY_SOFT}; color:{theme::PRIMARY}; font-size:13px; display:flex; align-items:center; gap:8px;",
                         Icon { name: IconName::Clock, size: 16 }
                         "{s}"
                     }
                 }
                 if !errors.read().is_empty() {
                     div {
-                        style: "padding:12px 14px; border-radius:12px; background:{theme::NEGATIVE_SOFT}; color:{theme::DANGER}; font-size:13px; display:flex; gap:8px; align-items:flex-start;",
+                        style: "padding:12px 14px; border-radius:0; background:{theme::NEGATIVE_SOFT}; color:{theme::DANGER}; font-size:13px; display:flex; gap:8px; align-items:flex-start;",
                         div { style: "flex:1;",
                             for (n, msg) in errors.read().iter() {
                                 div {
@@ -261,7 +261,7 @@ fn AccountsTab(statements: Vec<Statement>, mut selected: Signal<Vec<String>>) ->
             }
         }
         div {
-            style: "background:#fff; border-radius:16px; overflow:hidden;",
+            style: "background:#fff; border-radius:0; overflow:hidden;",
             for a in shown {
                 {
                     let is_sel = selected.read().contains(&a.key);
@@ -357,7 +357,7 @@ fn TransactionsTab(statements: Vec<Statement>, selected: Signal<Vec<String>>) ->
                 }
             }
             div {
-                style: "background:#fff; border-radius:16px; overflow:hidden;",
+                style: "background:#fff; border-radius:0; overflow:hidden;",
                 for (i, (own, txn)) in txns.into_iter().enumerate() {
                     TxnRow { key: "{i}", own, txn }
                 }

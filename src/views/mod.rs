@@ -14,6 +14,9 @@ pub mod ui;
 
 use dioxus::prelude::*;
 
+/// Recipient of the suggestions & feedback email
+pub const FEEDBACK_EMAIL: &str = "namdwb@gmail.com";
+
 // ─── Shared UI helpers ────────────────────────────────────────────────────────
 
 /// Format VND — e.g. 1.500.000 ₫

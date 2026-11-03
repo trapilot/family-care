@@ -3,7 +3,11 @@ use crate::i18n::use_i18n;
 
 use crate::app::AppState;
 use crate::models::{Currency, CurrencyInfo, Wallet, WalletType};
-use crate::repository::{CurrencyRepo, WalletRepo};
+use crate::repository::{CreditCardRepo, CurrencyRepo, WalletRepo};
+use crate::services::CreditCardService;
+use crate::models::CardSummary;
+use crate::views::fmt_date;
+use std::collections::HashMap;
 use crate::views::icons::{Icon, IconName};
 use crate::views::ui::{HeaderAction, ScreenHeader, IconTile, SectionTitle};
 use crate::views::{currency_name, fmt_currency, fmt_vnd, shown_totals, theme};
@@ -17,13 +21,21 @@ pub fn WalletList(view: Signal<WalletView>) -> Element {
     let state = use_context::<AppState>();
     let wallets = use_signal(|| vec![]);
     let money_types = use_signal(Vec::<CurrencyInfo>::new);
+    // Credit card statement summaries by wallet id, computed once per load
+    let card_summaries = use_signal(HashMap::<String, CardSummary>::new);
 
     use_effect({
         let state = state.clone();
         let mut wallets = wallets.clone();
         let mut money_types = money_types;
+        let mut card_summaries = card_summaries;
         move || {
             state.with_conn(|conn| {
+                let today = chrono::Local::now().date_naive();
+                let summaries: HashMap<String, CardSummary> = CreditCardRepo::list(conn).unwrap_or_default().iter()
+                    .filter_map(|c| CreditCardService::summary(conn, c, today).ok().map(|s| (c.wallet_id.clone(), s)))
+                    .collect();
+                card_summaries.set(summaries);
                 if let Ok(ws) = WalletRepo::list_active(conn) { wallets.set(ws); }
                 if let Ok(list) = CurrencyRepo::list(conn) { money_types.set(list); }
             });
@@ -35,6 +47,7 @@ pub fn WalletList(view: Signal<WalletView>) -> Element {
         (WalletType::Cash,       "Cash"),
         (WalletType::Bank,       "Bank"),
         (WalletType::EWallet,    "E-Wallet"),
+        (WalletType::CreditCard, "Credit Card"),
         (WalletType::Investment, "Investment"),
         (WalletType::Loan,       "Loan"),
     ]
@@ -106,6 +119,7 @@ pub fn WalletList(view: Signal<WalletView>) -> Element {
                                 for wallet in group.iter() {
                                     WalletRow {
                                         wallet: wallet.clone(),
+                                        card: card_summaries.read().get(&wallet.id).cloned(),
                                         on_tap: {
                                             let w = wallet.clone();
                                             move |_| { view.set(WalletView::Detail(w.clone())); }
@@ -138,6 +152,7 @@ pub fn WalletList(view: Signal<WalletView>) -> Element {
 #[component]
 fn WalletRow(
     wallet: Wallet,
+    card: Option<CardSummary>,
     on_tap:  EventHandler<MouseEvent>,
     on_edit: EventHandler<MouseEvent>,
 ) -> Element {
@@ -146,8 +161,10 @@ fn WalletRow(
         WalletType::Bank       => (IconName::Landmark, "#3f51b5"),
         WalletType::Loan       => (IconName::Handshake, "#bb3baa"),
         WalletType::EWallet    => (IconName::Smartphone, "#f59e0b"),
+        WalletType::CreditCard => (IconName::CreditCard, "#e11d48"),
         WalletType::Investment => (IconName::TrendingUp, "#8b5cf6"),
     };
+    let t = use_i18n();
     let balances = wallet.display_balances();
     let several = balances.len() > 1;
 
@@ -160,6 +177,15 @@ fn WalletRow(
 
             div { style: "flex:1; min-width:0;",
                 div { style: "font-size:14px; color:{theme::TEXT}; overflow-wrap:anywhere;", "{wallet.name}" }
+                if let Some(s) = card.as_ref().filter(|s| !s.is_paid && s.remaining_due > Decimal::ZERO) {
+                    {
+                        let overdue = chrono::Local::now().date_naive() > s.due_date;
+                        let color = if overdue { theme::DANGER } else { theme::TEXT_MUTED };
+                        rsx! {
+                            div { style: "font-size:12px; color:{color};", "{t.t(\"Due\")} {fmt_date(s.due_date)}" }
+                        }
+                    }
+                }
                 for b in balances {
                     div {
                         style: {

@@ -55,7 +55,7 @@ pub fn HoldingsView(wallet_id: String) -> Element {
 
             // ── Portfolio summary ──
             div {
-                style: "background:{theme::PRIMARY}; border-radius:16px; padding:16px; color:#fff;",
+                style: "background:{theme::PRIMARY}; border-radius:0; padding:16px; color:#fff;",
                 div { style: "font-size:13px; opacity:.8; margin-bottom:8px;", {t.t("Portfolio")} }
                 div {
                     style: "display:grid; grid-template-columns:1fr 1fr; gap:10px;",
@@ -204,7 +204,7 @@ fn HoldingCard(
                 div {
                     style: "display:flex; gap:8px; align-items:center;",
                     AmountInput {
-                        style: "flex:1; min-width:0; box-sizing:border-box; border:1px solid #3f51b5; border-radius:12px; padding:10px 12px; font-size:14px; outline:none; color:#1f2133;",
+                        style: "flex:1; min-width:0; box-sizing:border-box; border:1px solid #3f51b5; border-radius:0; padding:10px 12px; font-size:14px; outline:none; color:#1f2133;",
                         placeholder: t.t("New price"),
                         value: price_input.clone(),
                         oninput: move |v| on_price_input.call(v),
@@ -222,7 +222,7 @@ fn HoldingCard(
                 }
             } else {
                 button {
-                    style: "width:100%; padding:10px; border:1px dashed #e6e6ef; border-radius:12px; background:transparent; color:#8a8d9f; font-size:13px; cursor:pointer;",
+                    style: "width:100%; padding:10px; border:1px dashed #e6e6ef; border-radius:0; background:transparent; color:#8a8d9f; font-size:13px; cursor:pointer;",
                     onclick: move |e| { on_edit_price.call(e); },
                     {t.t("Update last price")}
                 }
@@ -245,7 +245,7 @@ fn PortfolioStat(label: &'static str, value: String, color: &'static str) -> Ele
 fn StatCell(label: &'static str, value: String) -> Element {
     rsx! {
         div {
-            style: "background:{theme::BG}; border-radius:10px; padding:6px 8px;",
+            style: "background:{theme::BG}; border-radius:0; padding:6px 8px;",
             div { style: "font-size:10px; color:{theme::TEXT_MUTED}; margin-bottom:1px;", "{label}" }
             div { style: "font-size:12px; font-weight:600; color:{theme::TEXT};", "{value}" }
         }

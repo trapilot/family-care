@@ -47,6 +47,7 @@ pub enum WalletType {
     Bank,
     Loan,
     EWallet,
+    CreditCard,
     Investment,
 }
 
@@ -57,6 +58,7 @@ impl fmt::Display for WalletType {
             WalletType::Bank       => write!(f, "bank"),
             WalletType::Loan       => write!(f, "loan"),
             WalletType::EWallet    => write!(f, "e_wallet"),
+            WalletType::CreditCard => write!(f, "credit_card"),
             WalletType::Investment => write!(f, "investment"),
         }
     }
@@ -70,6 +72,7 @@ impl FromStr for WalletType {
             "bank"       => Ok(WalletType::Bank),
             "loan"       => Ok(WalletType::Loan),
             "e_wallet"   => Ok(WalletType::EWallet),
+            "credit_card" => Ok(WalletType::CreditCard),
             "investment" => Ok(WalletType::Investment),
             _            => Err(AppError::Parse(format!("Unknown wallet type: {s}"))),
         }
@@ -157,4 +160,15 @@ pub(crate) fn to_sqlite_err(e: AppError) -> rusqlite::Error {
         rusqlite::types::Type::Text,
         Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn credit_card_wallet_type_round_trips() {
+        assert_eq!(WalletType::CreditCard.to_string(), "credit_card");
+        assert_eq!("credit_card".parse::<WalletType>().unwrap(), WalletType::CreditCard);
+    }
 }

@@ -1,5 +1,6 @@
 pub mod bill_repo;
 pub mod category_repo;
+pub mod credit_card_repo;
 pub mod currency_repo;
 pub mod family_repo;
 pub mod holding_repo;
@@ -14,6 +15,7 @@ pub mod settings_repo;
 
 pub use bill_repo::BillRepo;
 pub use category_repo::CategoryRepo;
+pub use credit_card_repo::CreditCardRepo;
 pub use currency_repo::CurrencyRepo;
 pub use family_repo::FamilyRepo;
 pub use holding_repo::HoldingRepo;

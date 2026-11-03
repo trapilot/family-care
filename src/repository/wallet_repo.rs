@@ -167,6 +167,7 @@ impl WalletRepo {
                    (SELECT id FROM transactions WHERE wallet_id = ?1 AND txn_type = 'opening_balance')", [id])
             .and_then(|_| conn.execute("DELETE FROM transactions WHERE wallet_id = ?1 AND txn_type = 'opening_balance'", [id]))
             .and_then(|_| conn.execute("DELETE FROM wallet_balances WHERE wallet_id = ?1", [id]))
+            .and_then(|_| conn.execute("DELETE FROM credit_cards WHERE wallet_id = ?1", [id]))
             .and_then(|_| conn.execute("DELETE FROM wallets WHERE id = ?1", [id]));
         match result {
             Ok(_)  => { conn.execute_batch("COMMIT")?; Ok(()) }

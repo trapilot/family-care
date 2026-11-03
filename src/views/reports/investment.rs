@@ -74,7 +74,8 @@ pub fn InvestmentReport() -> Element {
 
             // ── Overview ──
             div {
-                style: "background:{theme::PRIMARY}; border-radius:16px; padding:16px; color:#fff;",
+                class: "money-box",
+                style: "background:{theme::PRIMARY}; border-radius:0; padding:16px; color:#fff;",
 
                 div {
                     style: "font-size:13px; opacity:.8; margin-bottom:12px;",
@@ -209,7 +210,7 @@ fn InvStat(label: &'static str, value: String, color: &'static str) -> Element {
 fn PnlCell(label: &'static str, value: String, color: &'static str) -> Element {
     rsx! {
         div {
-            style: "background:{theme::BG}; border-radius:10px; padding:6px 8px;",
+            style: "background:{theme::BG}; border-radius:0; padding:6px 8px;",
             div { style: "font-size:10px; color:{theme::TEXT_MUTED}; margin-bottom:1px;", "{label}" }
             div { style: "font-size:12px; font-weight:600; color:{color};", "{value}" }
         }

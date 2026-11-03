@@ -57,7 +57,7 @@ fn PhotoSlot(side: IdSide, photo: Signal<Option<Vec<u8>>>) -> Element {
             style: "flex:1; min-width:0; display:flex; flex-direction:column; gap:6px;",
             div { style: "font-size:13px; font-weight:600; color:{theme::TEXT_MUTED};", {t.t(label)} }
             label {
-                style: "aspect-ratio:1.585; border:1px dashed {theme::PRIMARY}; border-radius:12px; background:{theme::PRIMARY_SOFT}; display:flex; align-items:center; justify-content:center; overflow:hidden; cursor:pointer; font-size:13px; color:{theme::PRIMARY}; text-align:center;",
+                style: "aspect-ratio:1.585; border:1px dashed {theme::PRIMARY}; border-radius:0; background:{theme::PRIMARY_SOFT}; display:flex; align-items:center; justify-content:center; overflow:hidden; cursor:pointer; font-size:13px; color:{theme::PRIMARY}; text-align:center;",
                 if let Some(src) = src {
                     img { src, style: "width:100%; height:100%; object-fit:contain;" }
                 } else {
@@ -347,7 +347,7 @@ pub fn IdCardsPdf(view: Signal<MemberView>) -> Element {
             }
 
             if !status.read().is_empty() {
-                div { style: "font-size:13px; color:{theme::PRIMARY}; background:{theme::PRIMARY_SOFT}; border-radius:12px; padding:10px 12px;",
+                div { style: "font-size:13px; color:{theme::PRIMARY}; background:{theme::PRIMARY_SOFT}; border-radius:0; padding:10px 12px;",
                     IconText {
                         text: status.read().clone(),
                         size: 14,

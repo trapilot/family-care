@@ -4,9 +4,13 @@ use crate::i18n::use_i18n;
 use crate::app::AppState;
 use crate::models::{Transaction, Wallet, WalletType};
 use crate::repository::transaction_repo::TxnFilter;
-use crate::repository::TransactionRepo;
+use crate::repository::{CreditCardRepo, TransactionRepo};
+use crate::services::CreditCardService;
 use crate::views::ui::{txn_type_look, IconCircle, ScreenHeader, UnderlineTabs};
-use crate::views::{fmt_currency, theme, ts_to_date_str};
+use crate::views::{fmt_currency, fmt_date, fmt_vnd, theme, ts_to_date_str};
+use crate::models::{CardSummary, CreditCard};
+use chrono::{Local, NaiveDate};
+use rust_decimal::Decimal;
 use super::{holdings::HoldingsView, WalletView};
 
 #[component]
@@ -60,7 +64,7 @@ pub fn WalletDetail(view: Signal<WalletView>, wallet: Wallet) -> Element {
             div {
                 style: "padding:16px 16px 0;",
                 div {
-                    style: "background:{theme::PRIMARY}; border-radius:16px; padding:16px; color:#fff;",
+                    style: "background:{theme::PRIMARY}; border-radius:0; padding:16px; color:#fff;",
                     div {
                         style: "font-size:13px; opacity:.8; margin-bottom:6px;",
                         "{t.t(\"Balance\")} · {t.code(&wallet.wallet_type.to_string())}"
@@ -73,6 +77,10 @@ pub fn WalletDetail(view: Signal<WalletView>, wallet: Wallet) -> Element {
                         }
                     }
                 }
+            }
+
+            if wallet.wallet_type == WalletType::CreditCard {
+                CardStatement { wallet_id: wallet.id.clone() }
             }
 
             // ── Tabs (investment wallet shows Holdings tab) ──
@@ -155,6 +163,106 @@ fn TxnHistoryRow(txn: Transaction, last: bool) -> Element {
                 div { style: "font-size:12px; color:{theme::TEXT_MUTED};", "{date_str}" }
             }
             span { style: "font-size:14px; font-weight:600; color:{amount_color}; flex-shrink:0;", "{sign}{amount_str}" }
+        }
+    }
+}
+
+// ─── Credit card statement ───────────────────────────────────────────────────
+
+fn load_card(state: &AppState, wallet_id: &str, today: NaiveDate) -> Option<(CreditCard, CardSummary)> {
+    state.with_conn(|conn| {
+        let card = CreditCardRepo::get(conn, wallet_id).ok().flatten()?;
+        let summary = CreditCardService::summary(conn, &card, today).ok()?;
+        Some((card, summary))
+    })
+}
+
+#[component]
+fn CardStatement(wallet_id: String) -> Element {
+    let t = use_i18n();
+    let state = use_context::<AppState>();
+    let today = Local::now().date_naive();
+    let mut data = use_signal({
+        let (state, id) = (state.clone(), wallet_id.clone());
+        move || load_card(&state, &id, today)
+    });
+
+    let Some((card, s)) = data.read().clone() else {
+        return rsx! {
+            div {
+                style: "padding:16px 16px 0;",
+                div { style: "{theme::CARD} font-size:13px; color:{theme::TEXT_MUTED};",
+                    {t.t("Set the statement and due days in Edit to track payments.")}
+                }
+            }
+        };
+    };
+
+    let overdue = today > s.due_date && !s.is_paid && s.remaining_due > Decimal::ZERO;
+    let remaining_color = if s.remaining_due > Decimal::ZERO && !s.is_paid { theme::DANGER } else { theme::TEXT };
+    let due_text = if overdue { format!("{} · {}", fmt_date(s.due_date), t.t("overdue")) } else { fmt_date(s.due_date) };
+    let due_color = if overdue { theme::DANGER } else { theme::TEXT };
+    let available_negative = s.available.is_some_and(|a| a < Decimal::ZERO);
+
+    let row = |label: &str, value: String, color: &str, bold: bool| {
+        let weight = if bold { 700 } else { 500 };
+        rsx! {
+            div {
+                style: "display:flex; justify-content:space-between; align-items:baseline; gap:12px; font-size:14px;",
+                span { style: "color:{theme::TEXT_MUTED};", "{label}" }
+                span { style: "color:{color}; font-weight:{weight}; text-align:right; overflow-wrap:anywhere;", "{value}" }
+            }
+        }
+    };
+
+    rsx! {
+        div {
+            style: "padding:16px 16px 0;",
+            div {
+                style: "{theme::CARD} display:flex; flex-direction:column; gap:8px;",
+                div { style: "font-size:15px; font-weight:700; color:{theme::TEXT};", {t.t("Statement")} }
+                {row(t.t("Statement date"), fmt_date(s.statement_date), theme::TEXT, false)}
+                {row(t.t("Statement balance"), fmt_vnd(s.statement_balance), theme::TEXT, false)}
+                {row(t.t("Paid since statement"), fmt_vnd(s.paid_since), theme::TEXT, false)}
+                {row(t.t("Remaining to pay"), fmt_vnd(s.remaining_due), remaining_color, true)}
+                {row(t.t("Due date"), due_text, due_color, false)}
+                {row(t.t("New charges this cycle"), fmt_vnd(s.new_charges), theme::TEXT, false)}
+                if let Some(limit) = card.credit_limit {
+                    {row(t.t("Credit limit"), fmt_vnd(limit), theme::TEXT, false)}
+                }
+                if let Some(available) = s.available {
+                    {row(t.t("Available"), fmt_vnd(available), if available_negative { theme::DANGER } else { theme::TEXT }, false)}
+                }
+                if s.is_paid {
+                    div {
+                        style: "display:flex; align-items:center; justify-content:space-between; margin-top:4px;",
+                        span { style: "color:{theme::POSITIVE}; font-weight:600; font-size:14px;", "✓ {t.t(\"Paid\")}" }
+                        button {
+                            style: "border:none; background:transparent; color:{theme::TEXT_MUTED}; font-size:13px; cursor:pointer; padding:4px 8px;",
+                            onclick: {
+                                let (state, id) = (state.clone(), wallet_id.clone());
+                                move |_| {
+                                    let _ = state.with_conn(|conn| CreditCardService::unmark_paid(conn, &id));
+                                    data.set(load_card(&state, &id, today));
+                                }
+                            },
+                            {t.t("Undo")}
+                        }
+                    }
+                } else if s.statement_balance > Decimal::ZERO {
+                    button {
+                        style: "{theme::BTN_PRIMARY} margin-top:4px;",
+                        onclick: {
+                            let (state, id) = (state.clone(), wallet_id.clone());
+                            move |_| {
+                                let _ = state.with_conn(|conn| CreditCardService::mark_paid(conn, &id, today));
+                                data.set(load_card(&state, &id, today));
+                            }
+                        },
+                        {t.t("Mark as paid")}
+                    }
+                }
+            }
         }
     }
 }

@@ -46,7 +46,7 @@ pub fn PinVerifyModal(
                     p { style: "margin:0 0 20px; font-size:14px; color:{theme::TEXT_MUTED}; text-align:center;", {t.t("Please enter your PIN to continue.")} },
 
                     if let Some(err) = error.read().clone() {
-                        div { style: "width:100%; box-sizing:border-box; background:{theme::NEGATIVE_SOFT}; border-radius:12px; padding:10px; color:{theme::DANGER}; text-align:center; font-size:14px; margin-bottom:16px;", "{err}" }
+                        div { style: "width:100%; box-sizing:border-box; background:{theme::NEGATIVE_SOFT}; border-radius:0; padding:10px; color:{theme::DANGER}; text-align:center; font-size:14px; margin-bottom:16px;", "{err}" }
                     }
 
                     form {

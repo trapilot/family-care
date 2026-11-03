@@ -1,5 +1,6 @@
 pub mod bill;
 pub mod category;
+pub mod credit_card;
 pub mod currency;
 pub mod family;
 pub mod holding;
@@ -13,6 +14,7 @@ pub mod wallet;
 
 pub use bill::{Bill, NewBill};
 pub use category::{Category, NewCategory};
+pub use credit_card::{CardSummary, CreditCard};
 pub use currency::CurrencyInfo;
 pub use family::{Family, NewFamily};
 pub use holding::{AssetType, Holding };

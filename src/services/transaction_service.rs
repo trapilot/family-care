@@ -321,7 +321,10 @@ impl TransactionService {
     // ─── Balance check ────────────────────────────────────────────────────────
 
     fn check_balance(conn: &Connection, wallet_id: &str, currency: &Currency, amount: Decimal) -> Result<()> {
-        if amount > WalletRepo::get_balance(conn, wallet_id, currency)? {
+        // Credit cards spend on credit: their balance is allowed to go negative (amount owed)
+        let is_credit_card = WalletRepo::find_by_id(conn, wallet_id)?
+            .is_some_and(|w| w.wallet_type == crate::models::WalletType::CreditCard);
+        if !is_credit_card && amount > WalletRepo::get_balance(conn, wallet_id, currency)? {
             return Err(AppError::InsufficientBalance(wallet_id.to_string()));
         }
         Ok(())
@@ -333,6 +336,24 @@ mod tests {
     use super::*;
     use crate::models::{NewWallet, WalletType};
     use crate::repository::CategoryRepo;
+
+    #[test]
+    fn credit_card_can_spend_below_zero_but_cash_cannot() {
+        let conn = Connection::open_in_memory().unwrap();
+        crate::db::migrations::run(&conn).unwrap();
+        CategoryRepo::seed_defaults(&conn).unwrap();
+        let category = CategoryRepo::list(&conn).unwrap()[0].id.clone();
+        let new = |name: &str, wallet_type| WalletRepo::create(&conn, &NewWallet {
+            name: name.into(), wallet_type, broker: None, icon: None, color: None, sort_order: 0,
+        }).unwrap();
+        let card = new("VISA", WalletType::CreditCard);
+        let cash = new("Cash", WalletType::Cash);
+        let spend = |id: &str| TransactionService::execute(&conn, &NewTransaction::expense(id, Decimal::from(500_000), Currency::VND, &category, 1_000));
+
+        spend(&card.id).unwrap();
+        assert_eq!(WalletRepo::get_balance(&conn, &card.id, &Currency::VND).unwrap(), Decimal::from(-500_000));
+        assert!(spend(&cash.id).is_err());
+    }
 
     #[test]
     fn opening_balance_can_be_zero_and_edited_later() {

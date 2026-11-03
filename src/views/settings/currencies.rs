@@ -76,7 +76,7 @@ pub fn CurrenciesSettings() -> Element {
             }
 
             div {
-                style: "background:#fff; border-radius:16px; overflow:hidden;",
+                style: "background:#fff; border-radius:0; overflow:hidden;",
                 for (i, info) in items.iter().enumerate() {
                     {
                         let code = info.code.clone();
