@@ -302,7 +302,7 @@ fn AccountsTab(statements: Vec<Statement>, mut selected: Signal<Vec<String>>) ->
                                 }
                                 div { style: "color:{theme::TEXT_MUTED};",
                                     {t.t("{n} txns").replace("{n}", &a.count.to_string())}
-                                    if let Some(d) = a.last_date { " · {d.format(\"%d/%m/%Y\")}" }
+                                    if let Some(d) = a.last_date { " · {crate::views::fmt_date(d)}" }
                                 }
                             }
                         }
@@ -371,7 +371,7 @@ fn TxnRow(own: Option<String>, txn: StatementTxn) -> Element {
     let t = use_i18n();
     let signed = txn.signed_amount();
     let (sign, color) = if signed < Decimal::ZERO { ("−", theme::NEGATIVE) } else { ("+", theme::POSITIVE) };
-    let date = txn.date.map(|d| d.format("%d/%m/%Y").to_string()).unwrap_or_else(|| "—".into());
+    let date = txn.date.map(crate::views::fmt_date).unwrap_or_else(|| "—".into());
     let who = [txn.counterparty_name.clone(), txn.counterparty_account.clone()]
         .into_iter()
         .flatten()
@@ -511,7 +511,7 @@ fn PhotosTab(statements: Vec<Statement>, mut version: Signal<u32>, busy: bool, o
 fn StatementCard(statement: Statement, on_delete: EventHandler<String>) -> Element {
     let t = use_i18n();
     let s = &statement;
-    let fmt = |d: chrono::NaiveDate| d.format("%d/%m/%Y").to_string();
+    let fmt = |d: chrono::NaiveDate| crate::views::fmt_date(d);
     let period = match (s.period_from, s.period_to) {
         (Some(a), Some(b)) => Some(format!("{} – {}", fmt(a), fmt(b))),
         _ => None,

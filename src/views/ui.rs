@@ -3,7 +3,7 @@ use dioxus::prelude::*;
 use crate::i18n::use_i18n;
 use crate::models::{Transaction, TransactionType};
 use crate::views::icons::{emoji_icon, icon_for_emoji, Icon, IconName};
-use crate::views::{fmt_currency, month_label, theme};
+use crate::views::{fmt_currency, iso_to_display, month_label, theme};
 
 /// `#RRGGBB` from a DB color that may carry an alpha suffix (`#RRGGBBAA`)
 fn hex6(color: &str) -> String {
@@ -24,6 +24,32 @@ fn icon_box(icon: Option<String>, fallback: IconName, color: &str, size: u32, fi
                 span { style: "font-size:{inner}px; line-height:1;", "{emoji}" }
             } else {
                 Icon { name, size: inner, color: fg.clone() }
+            }
+        }
+    }
+}
+
+/// Date picker that always displays the global UI_DATE_FMT (DD/MM/YYYY).
+/// `value` / `oninput` use "YYYY-MM-DD" (same as a native date input).
+#[component]
+pub fn DateInput(value: String, oninput: EventHandler<String>) -> Element {
+    let shown = iso_to_display(&value);
+    rsx! {
+        div { style: "position:relative;",
+            div {
+                style: "{theme::INPUT} min-height:42px; display:flex; align-items:center; justify-content:space-between; gap:8px;",
+                if shown.is_empty() {
+                    span { style: "color:{theme::TEXT_MUTED};", "DD/MM/YYYY" }
+                } else {
+                    span { "{shown}" }
+                }
+                Icon { name: IconName::Calendar, size: 18 }
+            }
+            input {
+                r#type: "date",
+                value: "{value}",
+                style: "position:absolute; inset:0; width:100%; height:100%; opacity:0; border:none; margin:0; padding:0; cursor:pointer;",
+                oninput: move |e| oninput.call(e.value()),
             }
         }
     }

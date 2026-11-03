@@ -9,7 +9,7 @@ use crate::views::date_str_to_ts;
 use super::id_cards::{save_photos, IdPhotoFields};
 use crate::views::theme;
 use crate::views::icons::{Icon, IconName};
-use crate::views::ui::{IconText, InitialsAvatar, ScreenHeader};
+use crate::views::ui::{DateInput, IconText, InitialsAvatar, ScreenHeader};
 use super::MemberView;
 
 #[component]
@@ -222,12 +222,7 @@ pub fn MemberForm(view: Signal<MemberView>, editing: Option<Member>) -> Element 
 
             // ── Date of birth ──
             Label { text: t.t("Date of Birth") }
-            input {
-                style: "{theme::INPUT}",
-                r#type: "date",
-                value: "{birth_date.read()}",
-                oninput: move |e| { birth_date.set(e.value()); },
-            }
+            DateInput { value: birth_date.read().clone(), oninput: move |v: String| birth_date.set(v) }
 
             // ── Identity (collapsible) ──
             button {
@@ -247,12 +242,7 @@ pub fn MemberForm(view: Signal<MemberView>, editing: Option<Member>) -> Element 
                     Label { text: t.t("ID Number") }
                     TextInput { value: id_number.read().clone(), placeholder: "", on_input: move |v| { id_number.set(v); } }
                     Label { text: t.t("Issue Date") }
-                    input {
-                        style: "{theme::INPUT}",
-                        r#type: "date",
-                        value: "{id_issue_date.read()}",
-                        oninput: move |e| { id_issue_date.set(e.value()); },
-                    }
+                    DateInput { value: id_issue_date.read().clone(), oninput: move |v: String| id_issue_date.set(v) }
                     Label { text: t.t("Issue Place") }
                     TextInput { value: id_issue_place.read().clone(), placeholder: "", on_input: move |v| { id_issue_place.set(v); } }
                     Label { text: t.t("ID Card Photos") }

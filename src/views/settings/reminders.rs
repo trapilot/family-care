@@ -122,7 +122,7 @@ pub fn RemindersSettings() -> Element {
                             .replace("{unit}", t.t(repeat_unit_label(reminder.repeat_unit)))
                             .replace("{date}", &ts_to_date_str(reminder.start_date));
                         let next = reminder.next_due(today)
-                            .map(|d| d.format("%d/%m/%Y").to_string())
+                            .map(crate::views::fmt_date)
                             .unwrap_or_else(|| "—".into());
                         let paused = reminder.is_paused;
                         let state_pause = state.clone();
@@ -330,7 +330,7 @@ pub fn BillsSettings() -> Element {
                     } else if unpaid {
                         t.t("🔔 Unpaid since {date}").replace("{date}", &bill.cycle_due(today).format("%d/%m").to_string())
                     } else {
-                        let next = bill.next_due(today).map(|d| d.format("%d/%m/%Y").to_string()).unwrap_or_else(|| "—".into());
+                        let next = bill.next_due(today).map(crate::views::fmt_date).unwrap_or_else(|| "—".into());
                         format!("{}{}: {next}", if paid_now { t.t("✓ Paid this month · ") } else { "" }, t.t("Next"))
                     };
                     let status_color = if bill.is_paused { "#f59e0b" } else if unpaid { theme::DANGER } else { theme::POSITIVE };

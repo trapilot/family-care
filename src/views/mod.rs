@@ -174,18 +174,31 @@ pub fn repeat_unit_label(unit: crate::models::RepeatUnit) -> &'static str {
     }
 }
 
+/// Global display format for dates across the app (DD/MM/YYYY)
+pub const UI_DATE_FMT: &str = "%d/%m/%Y";
+/// Storage/value format used by `<input type=date>` and the DB ("YYYY-MM-DD")
+pub const ISO_DATE_FMT: &str = "%Y-%m-%d";
+
+/// Format a date with the global display format
+pub fn fmt_date(d: chrono::NaiveDate) -> String { d.format(UI_DATE_FMT).to_string() }
+
+/// "YYYY-MM-DD" -> "DD/MM/YYYY"; returns "" for empty/invalid input
+pub fn iso_to_display(s: &str) -> String {
+    chrono::NaiveDate::parse_from_str(s, ISO_DATE_FMT).map(fmt_date).unwrap_or_default()
+}
+
 /// "YYYY-MM-DD" (for <input type=date>) one `unit` × `every` after `date`
 pub fn date_str_add(date: &str, unit: crate::models::RepeatUnit, every: u32) -> String {
     use crate::models::RepeatUnit;
     use chrono::{Duration, Months, NaiveDate};
-    let Ok(d) = NaiveDate::parse_from_str(date, "%Y-%m-%d") else { return date.to_string() };
+    let Ok(d) = NaiveDate::parse_from_str(date, ISO_DATE_FMT) else { return date.to_string() };
     let next = match unit {
         RepeatUnit::Day   => d.checked_add_signed(Duration::days(every as i64)),
         RepeatUnit::Week  => d.checked_add_signed(Duration::weeks(every as i64)),
         RepeatUnit::Month => d.checked_add_months(Months::new(every)),
         RepeatUnit::Year  => d.checked_add_months(Months::new(12 * every)),
     };
-    next.unwrap_or(d).format("%Y-%m-%d").to_string()
+    next.unwrap_or(d).format(ISO_DATE_FMT).to_string()
 }
 
 /// Current month/year as (year: i32, month: u32)
@@ -214,18 +227,25 @@ pub fn now_ts() -> i64 {
 pub fn ts_to_date_str(ts: i64) -> String {
     use chrono::{Local, TimeZone};
     let dt = Local.timestamp_opt(ts, 0).single().unwrap_or_else(|| Local::now());
-    dt.format("%d/%m/%Y").to_string()
+    dt.format(UI_DATE_FMT).to_string()
 }
 
 pub fn date_str_to_ts(s: &str) -> Option<i64> {
     use chrono::{Local, NaiveDate, TimeZone};
-    let d = NaiveDate::parse_from_str(s, "%Y-%m-%d").ok()?;
+    let d = NaiveDate::parse_from_str(s, ISO_DATE_FMT).ok()?;
     Some(Local.from_local_datetime(&d.and_hms_opt(12, 0, 0)?).single()?.timestamp())
 }
 
 #[cfg(test)]
 mod tests {
     use super::sanitize_amount;
+
+    #[test]
+    fn iso_to_display_formats_dd_mm_yyyy() {
+        assert_eq!(super::iso_to_display("2026-03-07"), "07/03/2026");
+        assert_eq!(super::iso_to_display(""), "");
+        assert_eq!(super::iso_to_display("bad"), "");
+    }
 
     #[test]
     fn gold_shows_only_needed_decimals() {

@@ -12,7 +12,7 @@ use crate::repository::{CategoryRepo, CurrencyRepo, HoldingRepo, ReminderRepo, T
 use crate::services::statement::ocr;
 use crate::services::{receipt, ReminderService, TransactionService};
 use crate::views::icons::{Icon, IconName};
-use crate::views::ui::{txn_type_look, IconCircle, IconText, ScreenHeader};
+use crate::views::ui::{txn_type_look, DateInput, IconCircle, IconText, ScreenHeader};
 use crate::views::{currency_name, date_str_add, date_str_to_ts, fmt_currency, fmt_vnd, now_ts, repeat_unit_label, theme, AmountInput};
 use crate::models::id_card::jpeg_data_url;
 use crate::views::photo_picker::{use_photo_picker, PhotoInput};
@@ -454,12 +454,7 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
 
             // ── Date ──
             FieldLabel { label: t.t("Date") }
-            input {
-                style: "{theme::INPUT}",
-                r#type: "date",
-                value: "{txn_date.read()}",
-                oninput: move |e| { txn_date.set(e.value()); },
-            }
+            DateInput { value: txn_date.read().clone(), oninput: move |v: String| txn_date.set(v) }
 
             // ── Amount + currency ──
             FieldLabel { label: t.t("Amount") }
@@ -601,12 +596,7 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
                     }
                     if remind() {
                         FieldLabel { label: t.t("First reminder date") }
-                        input {
-                            style: "{theme::INPUT}",
-                            r#type: "date",
-                            value: "{remind_start.read()}",
-                            oninput: move |e| { remind_start.set(e.value()); },
-                        }
+                        DateInput { value: remind_start.read().clone(), oninput: move |v: String| remind_start.set(v) }
                         FieldLabel { label: t.t("Repeat every") }
                         div { style: "display:flex; gap:8px;",
                             input {
