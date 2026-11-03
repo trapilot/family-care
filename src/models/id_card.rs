@@ -70,7 +70,7 @@ pub fn jpeg_data_url(jpeg: &[u8]) -> String {
 }
 
 /// Backup JSON keeps the JPEG bytes as one base64 string instead of a number array
-mod base64_bytes {
+pub(crate) mod base64_bytes {
     use base64::Engine;
     use serde::{Deserialize, Deserializer, Serializer};
 

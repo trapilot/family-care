@@ -26,7 +26,7 @@ static DELEGATE: OnceLock<usize> = OnceLock::new();
 
 define_class!(
     #[unsafe(super(NSObject))]
-    #[name = "FamilyFinanceNotificationDelegate"]
+    #[name = "FamilyMoneyNotificationDelegate"]
     struct NotificationDelegate;
 
     unsafe impl NSObjectProtocol for NotificationDelegate {}

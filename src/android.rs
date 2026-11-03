@@ -29,7 +29,7 @@ fn plugin() -> Option<&'static CameraCapture> {
                     let loader = env
                         .call_method(activity, "getClassLoader", "()Ljava/lang/ClassLoader;", &[])?
                         .l()?;
-                    let name = env.new_string("com.example.familyfinance.camera.CameraCapture")?;
+                    let name = env.new_string("com.example.familymoney.camera.CameraCapture")?;
                     let class = env
                         .call_method(
                             &loader,

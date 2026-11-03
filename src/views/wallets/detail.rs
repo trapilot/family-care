@@ -4,13 +4,14 @@ use crate::i18n::use_i18n;
 use crate::app::AppState;
 use crate::models::{Transaction, Wallet, WalletType};
 use crate::repository::transaction_repo::TxnFilter;
-use crate::repository::{CreditCardRepo, TransactionRepo};
+use crate::repository::{CategoryRepo, CreditCardRepo, TransactionRepo, WalletRepo};
 use crate::services::CreditCardService;
-use crate::views::ui::{txn_type_look, IconCircle, ScreenHeader, UnderlineTabs};
-use crate::views::{fmt_currency, fmt_date, fmt_vnd, theme, ts_to_date_str};
+use crate::views::ui::{ScreenHeader, TxnItem, UnderlineTabs};
+use crate::views::{fmt_currency, fmt_date, fmt_vnd, theme};
 use crate::models::{CardSummary, CreditCard};
 use chrono::{Local, NaiveDate};
 use rust_decimal::Decimal;
+use std::collections::HashMap;
 use super::{holdings::HoldingsView, WalletView};
 
 #[component]
@@ -101,7 +102,7 @@ pub fn WalletDetail(view: Signal<WalletView>, wallet: Wallet) -> Element {
             div {
                 style: "flex:1; overflow-y:auto; padding:16px;",
                 match sub_view.read().clone() {
-                    DetailTab::History  => rsx! { TxnHistory { txns: txns.read().clone() } },
+                    DetailTab::History  => rsx! { TxnHistory { wallet_id: wallet.id.clone(), txns: txns.read().clone() } },
                     DetailTab::Holdings => rsx! { HoldingsView { wallet_id: wallet.id.clone() } },
                 }
             }
@@ -117,8 +118,20 @@ enum DetailTab { History, Holdings }
 // ─── Transaction history ─────────────────────────────────────────────────────
 
 #[component]
-fn TxnHistory(txns: Vec<Transaction>) -> Element {
+fn TxnHistory(wallet_id: String, txns: Vec<Transaction>) -> Element {
     let t = use_i18n();
+    let state = use_context::<AppState>();
+    let wallets: HashMap<String, String> = state
+        .with_conn(|conn| WalletRepo::names(conn).unwrap_or_default());
+    let categories: HashMap<String, (String, String, String)> = state
+        .with_conn(|conn| CategoryRepo::list(conn).unwrap_or_default())
+        .into_iter()
+        .map(|c| (c.id, (
+            c.icon.unwrap_or_default(),
+            t.tr(&c.name),
+            c.color.unwrap_or_else(|| theme::TEXT_MUTED.to_string()),
+        )))
+        .collect();
     rsx! {
         div {
             style: "{theme::CARD} display:flex; flex-direction:column;",
@@ -129,40 +142,19 @@ fn TxnHistory(txns: Vec<Transaction>) -> Element {
                 }
             }
             for (i, txn) in txns.iter().enumerate() {
-                TxnHistoryRow { key: "{txn.id}", txn: txn.clone(), last: i + 1 == txns.len() }
+                div {
+                    key: "{txn.id}",
+                    style: if i + 1 == txns.len() { "" } else { theme::ROW_DIVIDER },
+                    TxnItem {
+                        category: txn.category_id.as_deref().and_then(|id| categories.get(id).cloned()),
+                        from_wallet: wallets.get(&txn.wallet_id).cloned(),
+                        to_wallet: txn.to_wallet_id.as_deref().and_then(|id| wallets.get(id).cloned()),
+                        perspective: Some(wallet_id.clone()),
+                        show_date: true,
+                        txn: txn.clone(),
+                    }
+                }
             }
-        }
-    }
-}
-
-#[component]
-fn TxnHistoryRow(txn: Transaction, last: bool) -> Element {
-    let t = use_i18n();
-    use crate::models::TransactionType;
-    let (icon, color) = txn_type_look(&txn.txn_type);
-    let amount_color = match txn.txn_type {
-        TransactionType::Income | TransactionType::InvestSell | TransactionType::OpeningBalance => theme::POSITIVE,
-        _ => theme::NEGATIVE,
-    };
-    let sign = match txn.txn_type {
-        TransactionType::Income | TransactionType::InvestSell | TransactionType::OpeningBalance => "+",
-        _ => "-",
-    };
-    let type_str = t.code(&txn.txn_type.to_string());
-    let amount_str = fmt_currency(txn.amount, &txn.currency);
-    let date_str   = ts_to_date_str(txn.txn_date);
-    let label      = txn.note.as_deref().unwrap_or(&type_str);
-    let divider    = if last { "" } else { theme::ROW_DIVIDER };
-
-    rsx! {
-        div {
-            style: "display:flex; align-items:center; gap:12px; padding:10px 0; {divider}",
-            IconCircle { icon: None, fallback: icon, color: color.to_string(), size: 40 }
-            div { style: "flex:1; min-width:0;",
-                div { style: "font-size:14px; color:{theme::TEXT}; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;", "{label}" }
-                div { style: "font-size:12px; color:{theme::TEXT_MUTED};", "{date_str}" }
-            }
-            span { style: "font-size:14px; font-weight:600; color:{amount_color}; flex-shrink:0;", "{sign}{amount_str}" }
         }
     }
 }

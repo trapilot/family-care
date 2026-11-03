@@ -13,7 +13,7 @@ use crate::services::statement::ocr;
 use crate::services::{receipt, ReminderService, TransactionService};
 use crate::views::icons::{Icon, IconName};
 use crate::views::ui::{txn_type_look, DateInput, IconCircle, IconText, ScreenHeader};
-use crate::views::{currency_name, date_str_add, date_str_to_ts, fmt_currency, fmt_vnd, now_ts, repeat_unit_label, theme, AmountInput};
+use crate::views::{currency_name, date_str_add, date_str_to_ts, fmt_currency, fmt_vnd, repeat_unit_label, theme, AmountInput};
 use crate::models::id_card::jpeg_data_url;
 use crate::views::photo_picker::{use_photo_picker, PhotoInput};
 use super::TxnView;
@@ -171,20 +171,64 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
         let editing = editing.clone();
 
         move |_: MouseEvent| {
-            let amount = match Decimal::from_str(&amount_str.read()) {
+            let kind = txn_type.read().clone();
+            let positive = |s: &str| Decimal::from_str(s.trim()).ok();
+
+            if wallet_id.read().is_empty() {
+                error_msg.set(t.t("Choose a wallet").into());
+                return;
+            }
+            let amount = match Decimal::from_str(amount_str.read().trim()) {
                 Ok(a) => a,
                 Err(_) => { error_msg.set(t.t("Invalid amount").into()); return; }
             };
-            let date_ts = match date_str_to_ts(&txn_date.read()) {
-                Some(ts) => ts,
-                None => now_ts(),
+            // Only invest trades derive their cost from qty x price; an opening balance may be 0
+            let is_invest = matches!(kind, TransactionType::InvestBuy | TransactionType::InvestSell);
+            let zero_ok = kind == TransactionType::OpeningBalance;
+            if !is_invest && (amount < Decimal::ZERO || (amount.is_zero() && !zero_ok)) {
+                error_msg.set(t.t("Amount must be greater than 0").into());
+                return;
+            }
+            if kind == TransactionType::Expense && category_id.read().is_empty() {
+                error_msg.set(t.t("Choose a category").into());
+                return;
+            }
+            let mut to_amount = Decimal::ZERO;
+            if kind == TransactionType::Transfer {
+                if to_wallet_id.read().is_empty() {
+                    error_msg.set(t.t("Choose the receiving wallet").into());
+                    return;
+                }
+                if *to_wallet_id.read() == *wallet_id.read() && *to_currency.read() == *currency.read() {
+                    error_msg.set(t.t("Choose a different wallet to transfer to").into());
+                    return;
+                }
+                match positive(&to_amount_str.read()).filter(|a| *a > Decimal::ZERO) {
+                    Some(a) => to_amount = a,
+                    None => { error_msg.set(t.t("Invalid received amount").into()); return; }
+                }
+            }
+            let (mut qty, mut price) = (Decimal::ZERO, Decimal::ZERO);
+            if is_invest {
+                if holding_id.read().is_empty() {
+                    error_msg.set(t.t("Choose a holding").into());
+                    return;
+                }
+                match (positive(&qty_str.read()), positive(&price_str.read())) {
+                    (Some(q), Some(p)) if q > Decimal::ZERO && p > Decimal::ZERO => { qty = q; price = p; }
+                    _ => { error_msg.set(t.t("Quantity and price must be greater than 0").into()); return; }
+                }
+            }
+            let Some(date_ts) = date_str_to_ts(&txn_date.read()) else {
+                error_msg.set(t.t("Choose a date").into());
+                return;
             };
             let note_opt = {
                 let n = note.read();
                 if n.is_empty() { None } else { Some(n.clone()) }
             };
 
-            let mut new_txn = match txn_type.read().clone() {
+            let mut new_txn = match kind.clone() {
                 TransactionType::Income => {
                     NewTransaction::income(
                         &wallet_id.read(),
@@ -204,10 +248,6 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
                     )
                 }
                 TransactionType::Transfer => {
-                    let to_amount = match Decimal::from_str(&to_amount_str.read()) {
-                        Ok(a) => a,
-                        Err(_) => { error_msg.set(t.t("Invalid to_amount").into()); return; }
-                    };
                     NewTransaction::transfer(
                         &wallet_id.read(),
                         amount,
@@ -219,13 +259,9 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
                     )
                 }
                 TransactionType::InvestBuy => {
-                    let qty   = match Decimal::from_str(&qty_str.read())   { Ok(q) => q, Err(_) => { error_msg.set(t.t("Invalid quantity").into()); return; } };
-                    let price = match Decimal::from_str(&price_str.read()) { Ok(p) => p, Err(_) => { error_msg.set(t.t("Invalid price").into()); return; } };
                     NewTransaction::invest_buy(&wallet_id.read(), &holding_id.read(), qty, price, currency.read().clone(), date_ts)
                 }
                 TransactionType::InvestSell => {
-                    let qty   = match Decimal::from_str(&qty_str.read())   { Ok(q) => q, Err(_) => { error_msg.set(t.t("Invalid quantity").into()); return; } };
-                    let price = match Decimal::from_str(&price_str.read()) { Ok(p) => p, Err(_) => { error_msg.set(t.t("Invalid price").into()); return; } };
                     NewTransaction::invest_sell(&wallet_id.read(), &holding_id.read(), qty, price, currency.read().clone(), date_ts)
                 }
                 TransactionType::OpeningBalance => {
@@ -235,7 +271,6 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
 
             new_txn.note = note_opt.clone();
 
-            let kind = txn_type.read().clone();
             let reminder = if editing.is_none() && remind() && matches!(kind, TransactionType::Income | TransactionType::Transfer) {
                 let Some(every) = remind_every.read().parse::<u32>().ok().filter(|n| *n > 0) else {
                     error_msg.set(t.t("Repeat every must be at least 1").into());
@@ -261,15 +296,13 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
             };
 
             let result = state.with_conn(|conn| -> crate::error::Result<()> {
-                // If editing: delete old then insert new (simple approach)
-                // (its photos are deleted with it and re-saved below from `photos`)
-                if let Some(ref old) = editing {
-                    let _ = TransactionService::delete(conn, &old.id);
-                }
-                let saved = TransactionService::execute(conn, &new_txn)?;
-                for jpeg in photos.read().iter() {
-                    TxnImageRepo::add(conn, &saved.id, jpeg)?;
-                }
+                // Delete-old + insert-new + photos commit or roll back together
+                TransactionService::execute_with_photos(
+                    conn,
+                    editing.as_ref().map(|old| old.id.as_str()),
+                    &new_txn,
+                    &photos.read(),
+                )?;
                 if let Some(ref reminder) = reminder {
                     ReminderRepo::create(conn, reminder)?;
                     ReminderService::resync(conn)?;

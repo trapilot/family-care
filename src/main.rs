@@ -23,12 +23,12 @@ fn main() {
         let dir = PathBuf::from(home)
             .join("Library")
             .join("Application Support")
-            .join("FamilyFinance");
+            .join("FamilyMoney");
 
         std::fs::create_dir_all(&dir)
             .expect("Failed to create database directory");
 
-        dir.join("family_finance.db")
+        dir.join("family_money.db")
     };
 
     // The working directory is "/" (read-only) on Android: use the app's private files dir,
@@ -42,11 +42,11 @@ fn main() {
         std::fs::create_dir_all(&dir)
             .expect("Failed to create database directory");
 
-        dir.join("family_finance.db")
+        dir.join("family_money.db")
     };
 
     #[cfg(not(any(target_os = "ios", target_os = "android")))]
-    let db_path = PathBuf::from("family_finance.db");
+    let db_path = PathBuf::from("family_money.db");
 
     let db_path = db_path
         .to_str()

@@ -57,6 +57,68 @@ pub struct BackupData {
     /// Credit card statement settings; missing in backups made before they existed
     #[serde(default)]
     pub credit_cards: Vec<CreditCard>,
+    /// Recurring reminders; missing in older backups
+    #[serde(default)]
+    pub reminders: Vec<ReminderRow>,
+    /// Monthly bills; missing in older backups
+    #[serde(default)]
+    pub bills: Vec<BillRow>,
+    /// Receipt photos attached to transactions; missing in older backups
+    #[serde(default)]
+    pub transaction_images: Vec<TxnImageRow>,
+    /// Whitelisted user settings (see `BACKUP_SETTING_KEYS`); missing in older backups
+    #[serde(default)]
+    pub settings: Vec<SettingRow>,
+}
+
+/// Settings that travel with a backup. Never add `pin_hash` here.
+const BACKUP_SETTING_KEYS: [&str; 3] = ["language", "reminder_interval_hours", "reminder_start_time"];
+
+/// Row of the `reminders` table, stored as-is
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ReminderRow {
+    pub id:           String,
+    pub txn_type:     String,
+    pub wallet_id:    String,
+    pub to_wallet_id: Option<String>,
+    pub amount:       f64,
+    pub currency:     String,
+    pub note:         Option<String>,
+    pub start_date:   i64,
+    pub repeat_unit:  String,
+    pub repeat_every: i64,
+    pub created_at:   i64,
+    pub done_on:      Option<String>,
+    pub is_paused:    i64,
+}
+
+/// Row of the `bills` table, stored as-is
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BillRow {
+    pub id:         String,
+    pub name:       String,
+    pub amount:     Option<f64>,
+    pub due_day:    i64,
+    pub paid_month: Option<String>,
+    pub is_paused:  i64,
+    pub created_at: i64,
+}
+
+/// Row of the `transaction_images` table; the JPEG is base64 in the JSON
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TxnImageRow {
+    pub id:             String,
+    pub transaction_id: String,
+    #[serde(with = "crate::models::id_card::base64_bytes")]
+    pub jpeg:           Vec<u8>,
+    pub created_at:     i64,
+}
+
+/// Row of the `settings` table
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SettingRow {
+    pub key:   String,
+    pub value: String,
 }
 
 /// Dioxus desktop/mobile swaps clicks on file inputs for its own native dialog (app storage only).
@@ -105,6 +167,7 @@ enum PendingAction {
 #[component]
 pub fn BackupSettings() -> Element {
     let t = use_i18n();
+
     let state   = use_context::<AppState>();
     let mut status  = use_signal(|| String::new());
     let app_version = use_signal({
@@ -183,6 +246,7 @@ pub fn BackupSettings() -> Element {
             let result = read_backup_file(&file_path).and_then(|json| state.with_conn(|conn| import_backup(conn, &json)));
             match result {
                 Ok(stats) => {
+                    apply_imported_language(&state, t);
                     status.set(format!("✅ {} {}: {}", t.t("Imported from"), file_path.display(), stats));
                     is_ok.set(true);
                     backups.set(list_backup_files());
@@ -203,6 +267,7 @@ pub fn BackupSettings() -> Element {
         move |name: String, content: String| {
             match state.with_conn(|conn| import_backup(conn, &content)) {
                 Ok(stats) => {
+                    apply_imported_language(&state, t);
                     // Best effort: keep a copy in the app's backup list (the import already succeeded)
                     let _ = save_to_backup_folder_from_string(&content, &name);
                     backups.set(list_backup_files());
@@ -305,7 +370,7 @@ pub fn BackupSettings() -> Element {
             div {
                 style: "background:#fff; border-radius:0; padding:16px;",
                 div { style: "font-size:12px; color:{theme::TEXT_MUTED}; margin-bottom:4px;", "APP" }
-                div { style: "font-size:15px; font-weight:600; color:{theme::TEXT};", "Family Finance" }
+                div { style: "font-size:15px; font-weight:600; color:{theme::TEXT};", "Family Money" }
                 div { style: "font-size:13px; color:{theme::TEXT_MUTED}; margin-top:2px;", {t.t("Version {version} · SQLite local storage").replace("{version}", &app_version.read())} }
             }
 
@@ -605,8 +670,8 @@ fn delete_all_data(conn: &rusqlite::Connection) -> crate::error::Result<()> {
 }
 
 fn export_backup(conn: &rusqlite::Connection) -> crate::error::Result<String> {
-    let wallets      = WalletRepo::list_active(conn)?;
-    let holdings     = HoldingRepo::list_all_active(conn)?;
+    let wallets      = WalletRepo::list_all(conn)?;
+    let holdings     = HoldingRepo::list_all(conn)?;
     let categories   = CategoryRepo::list(conn)?;
     let transactions = TransactionRepo::list_all(conn)?;
     let members      = load_members(conn);
@@ -617,6 +682,44 @@ fn export_backup(conn: &rusqlite::Connection) -> crate::error::Result<String> {
         let mut stmt = conn.prepare("SELECT * FROM credit_cards")?;
         let rows = stmt.query_map([], CreditCard::from_row)?;
         rows.collect::<rusqlite::Result<Vec<_>>>()?
+    };
+
+    let reminders = {
+        let mut stmt = conn.prepare(
+            "SELECT id,txn_type,wallet_id,to_wallet_id,amount,currency,note,start_date,repeat_unit,repeat_every,created_at,done_on,is_paused FROM reminders")?;
+        let rows = stmt.query_map([], |r| Ok(ReminderRow {
+            id: r.get(0)?, txn_type: r.get(1)?, wallet_id: r.get(2)?, to_wallet_id: r.get(3)?,
+            amount: r.get(4)?, currency: r.get(5)?, note: r.get(6)?, start_date: r.get(7)?,
+            repeat_unit: r.get(8)?, repeat_every: r.get(9)?, created_at: r.get(10)?,
+            done_on: r.get(11)?, is_paused: r.get(12)?,
+        }))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    let bills = {
+        let mut stmt = conn.prepare("SELECT id,name,amount,due_day,paid_month,is_paused,created_at FROM bills")?;
+        let rows = stmt.query_map([], |r| Ok(BillRow {
+            id: r.get(0)?, name: r.get(1)?, amount: r.get(2)?, due_day: r.get(3)?,
+            paid_month: r.get(4)?, is_paused: r.get(5)?, created_at: r.get(6)?,
+        }))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    let transaction_images = {
+        let mut stmt = conn.prepare("SELECT id,transaction_id,jpeg,created_at FROM transaction_images")?;
+        let rows = stmt.query_map([], |r| Ok(TxnImageRow {
+            id: r.get(0)?, transaction_id: r.get(1)?, jpeg: r.get(2)?, created_at: r.get(3)?,
+        }))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    let settings = {
+        use rusqlite::OptionalExtension;
+        let mut out = Vec::new();
+        for key in BACKUP_SETTING_KEYS {
+            let value: Option<String> = conn
+                .query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| r.get(0))
+                .optional()?;
+            if let Some(value) = value { out.push(SettingRow { key: key.to_string(), value }); }
+        }
+        out
     };
 
     let data = BackupData {
@@ -631,6 +734,10 @@ fn export_backup(conn: &rusqlite::Connection) -> crate::error::Result<String> {
         id_card_images,
         currencies,
         credit_cards,
+        reminders,
+        bills,
+        transaction_images,
+        settings,
     };
 
     Ok(serde_json::to_string_pretty(&data)?)
@@ -652,6 +759,13 @@ fn parse_backup(json: &str) -> crate::error::Result<BackupData> {
     Ok(serde_json::from_value(value)?)
 }
 
+/// Apply the imported language right away (the backup restores the language setting)
+fn apply_imported_language(state: &AppState, mut t: crate::i18n::I18n) {
+    if let Some(code) = state.with_conn(|conn| SettingsRepo::get_language(conn).ok().flatten()) {
+        t.set_lang(crate::i18n::Lang::from_code(&code));
+    }
+}
+
 fn import_backup(conn: &rusqlite::Connection, json: &str) -> crate::error::Result<String> {
     let data = parse_backup(json)?;
 
@@ -661,6 +775,8 @@ fn import_backup(conn: &rusqlite::Connection, json: &str) -> crate::error::Resul
         // Clear existing data
         conn.execute_batch("
             DELETE FROM transaction_images;
+            DELETE FROM reminders;
+            DELETE FROM bills;
             DELETE FROM transactions;
             DELETE FROM holdings;
             DELETE FROM wallet_balances;
@@ -702,6 +818,35 @@ fn import_backup(conn: &rusqlite::Connection, json: &str) -> crate::error::Resul
                     rusqlite::params![w.id, b.currency.to_string(), crate::models::decimal_to_f64(b.balance)],
                 )?;
             }
+        }
+
+        // Reminders (after the wallets they reference)
+        for r in &data.reminders {
+            conn.execute(
+                "INSERT OR REPLACE INTO reminders
+                 (id,txn_type,wallet_id,to_wallet_id,amount,currency,note,start_date,repeat_unit,repeat_every,created_at,done_on,is_paused)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)",
+                rusqlite::params![
+                    r.id, r.txn_type, r.wallet_id, r.to_wallet_id, r.amount, r.currency, r.note,
+                    r.start_date, r.repeat_unit, r.repeat_every, r.created_at, r.done_on, r.is_paused,
+                ],
+            )?;
+        }
+
+        for b in &data.bills {
+            conn.execute(
+                "INSERT OR REPLACE INTO bills (id,name,amount,due_day,paid_month,is_paused,created_at)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7)",
+                rusqlite::params![b.id, b.name, b.amount, b.due_day, b.paid_month, b.is_paused, b.created_at],
+            )?;
+        }
+
+        // Only whitelisted settings; anything else in the file (e.g. pin_hash) is ignored
+        for s in data.settings.iter().filter(|s| BACKUP_SETTING_KEYS.contains(&s.key.as_str())) {
+            conn.execute(
+                "INSERT OR REPLACE INTO settings (key,value) VALUES (?1,?2)",
+                rusqlite::params![s.key, s.value],
+            )?;
         }
 
         // Credit card settings (after the wallets they reference)
@@ -778,6 +923,14 @@ fn import_backup(conn: &rusqlite::Connection, json: &str) -> crate::error::Resul
             )?;
         }
 
+        // Receipt photos (after the transactions they reference)
+        for img in &data.transaction_images {
+            conn.execute(
+                "INSERT OR REPLACE INTO transaction_images (id,transaction_id,jpeg,created_at) VALUES (?1,?2,?3,?4)",
+                rusqlite::params![img.id, img.transaction_id, img.jpeg, img.created_at],
+            )?;
+        }
+
         // Insert members (now includes family_id)
         for m in &data.members {
             conn.execute(
@@ -806,11 +959,14 @@ fn import_backup(conn: &rusqlite::Connection, json: &str) -> crate::error::Resul
         Ok(_) => {
             conn.execute_batch("COMMIT")?;
             CurrencyRepo::refresh_cache(conn)?;
+            // Notifications follow the imported reminders/bills/cards; never fail an import over them
+            let _ = crate::services::ReminderService::resync(conn);
             Ok(format!(
-                "{} families, {} wallets, {} holdings, {} categories, {} transactions, {} members, {} ID photos",
+                "{} families, {} wallets, {} holdings, {} categories, {} transactions, {} members, {} ID photos, {} reminders, {} bills, {} transaction photos",
                 data.families.len(), data.wallets.len(), data.holdings.len(),
                 data.categories.len(), data.transactions.len(), data.members.len(),
                 data.id_card_images.len(),
+                data.reminders.len(), data.bills.len(), data.transaction_images.len(),
             ))
         }
         Err(e) => {
@@ -1056,6 +1212,28 @@ mod tests {
     }
 
     #[test]
+    fn transaction_on_a_removed_wallet_survives_export_import() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        crate::db::migrations::run(&conn).unwrap();
+        crate::repository::CategoryRepo::seed_defaults(&conn).unwrap();
+        let category = crate::repository::CategoryRepo::list(&conn).unwrap()[0].id.clone();
+        let wallet = WalletRepo::create(&conn, &NewWallet {
+            name: "Old".into(), wallet_type: WalletType::Cash, broker: None, icon: None, color: None, sort_order: 0,
+        }).unwrap();
+        TransactionService::execute(&conn, &NewTransaction::opening_balance(&wallet.id, Decimal::from(1_000), Currency::VND, 1)).unwrap();
+        TransactionService::execute(&conn, &NewTransaction::expense(&wallet.id, Decimal::from(100), Currency::VND, &category, 2)).unwrap();
+        WalletRepo::soft_delete(&conn, &wallet.id).unwrap();
+
+        let json = export_backup(&conn).unwrap();
+        import_backup(&conn, &json).unwrap();
+
+        let w = WalletRepo::find_by_id(&conn, &wallet.id).unwrap().unwrap();
+        assert!(!w.is_active);
+        assert_eq!(w.balance(&Currency::VND), Decimal::from(900));
+        assert_eq!(count(&conn, "transactions"), 2);
+    }
+
+    #[test]
     fn legacy_backup_wallet_balance_is_restored() {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         crate::db::migrations::run(&conn).unwrap();
@@ -1072,5 +1250,82 @@ mod tests {
 
         let w = WalletRepo::find_by_id(&conn, "w1").unwrap().unwrap();
         assert_eq!(w.balance(&Currency::USD), Decimal::try_from(12.5).unwrap());
+    }
+
+    #[test]
+    fn export_then_import_restores_reminders_bills_photos_and_settings() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        crate::db::migrations::run(&conn).unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON").unwrap();
+
+        let wallet = WalletRepo::create(&conn, &NewWallet {
+            name: "Cash".into(), wallet_type: WalletType::Cash, broker: None, icon: None, color: None, sort_order: 0,
+        }).unwrap();
+        TransactionService::execute(&conn,
+            &NewTransaction::opening_balance(&wallet.id, Decimal::from(5_000), Currency::VND, 1)).unwrap();
+        let txn_id: String = conn.query_row("SELECT id FROM transactions LIMIT 1", [], |r| r.get(0)).unwrap();
+        let photo = vec![0xFFu8, 0xD8, 1, 2, 3, 0xFF, 0xD9];
+        crate::repository::TxnImageRepo::add(&conn, &txn_id, &photo).unwrap();
+        ReminderRepo::create(&conn, &NewReminder {
+            txn_type: TransactionType::Income, wallet_id: wallet.id.clone(), to_wallet_id: None,
+            amount: Decimal::from(1_000), currency: Currency::VND, note: Some("rent".into()),
+            start_date: 1, repeat_unit: RepeatUnit::Month, repeat_every: 1,
+        }).unwrap();
+        crate::repository::BillRepo::create(&conn, &crate::models::NewBill {
+            name: "Internet".into(), amount: Some(Decimal::from(300_000)), due_day: 15,
+        }).unwrap();
+        SettingsRepo::set_language(&conn, "vi").unwrap();
+        SettingsRepo::set_reminder_interval_hours(&conn, 7).unwrap();
+        SettingsRepo::set_pin(&conn, "1111").unwrap();
+
+        let json = export_backup(&conn).unwrap();
+        assert!(!json.contains("pin_hash"));
+
+        delete_all_data(&conn).unwrap();
+        SettingsRepo::set_language(&conn, "en").unwrap();
+        SettingsRepo::set_reminder_interval_hours(&conn, 4).unwrap();
+
+        let msg = import_backup(&conn, &json).unwrap();
+        assert!(msg.contains("1 reminders, 1 bills, 1 transaction photos"), "{msg}");
+        for table in ["reminders", "bills", "transaction_images", "transactions", "wallets"] {
+            assert_eq!(count(&conn, table), 1, "{table}");
+        }
+        assert_eq!(crate::repository::TxnImageRepo::list(&conn, &txn_id).unwrap(), vec![photo]);
+        assert_eq!(SettingsRepo::get_language(&conn).unwrap().as_deref(), Some("vi"));
+        assert_eq!(SettingsRepo::get_reminder_interval_hours(&conn).unwrap(), 7);
+        // The PIN is untouched by an import
+        assert!(SettingsRepo::verify_pin(&conn, "1111").unwrap());
+    }
+
+    #[test]
+    fn import_succeeds_over_existing_reminders_and_ignores_pin_in_file() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        crate::db::migrations::run(&conn).unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON").unwrap();
+
+        let wallet = WalletRepo::create(&conn, &NewWallet {
+            name: "Cash".into(), wallet_type: WalletType::Cash, broker: None, icon: None, color: None, sort_order: 0,
+        }).unwrap();
+        ReminderRepo::create(&conn, &NewReminder {
+            txn_type: TransactionType::Income, wallet_id: wallet.id.clone(), to_wallet_id: None,
+            amount: Decimal::from(1_000), currency: Currency::VND, note: None,
+            start_date: 1, repeat_unit: RepeatUnit::Month, repeat_every: 1,
+        }).unwrap();
+        crate::repository::BillRepo::create(&conn, &crate::models::NewBill {
+            name: "Old".into(), amount: None, due_day: 1,
+        }).unwrap();
+        SettingsRepo::set_pin(&conn, "1111").unwrap();
+
+        let json = r#"{
+            "app_version": "0.1.0", "exported_at": 1,
+            "wallets": [], "holdings": [], "categories": [], "transactions": [], "members": [], "families": [],
+            "settings": [{"key": "pin_hash", "value": "evil"}, {"key": "language", "value": "vi"}]
+        }"#;
+        import_backup(&conn, json).unwrap();
+
+        assert_eq!(count(&conn, "reminders"), 0);
+        assert_eq!(count(&conn, "bills"), 0);
+        assert_eq!(SettingsRepo::get_language(&conn).unwrap().as_deref(), Some("vi"));
+        assert!(SettingsRepo::verify_pin(&conn, "1111").unwrap());
     }
 }

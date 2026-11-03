@@ -71,7 +71,7 @@ pub fn App() -> Element {
         move || {
             state.with_conn(|conn| crate::repository::SettingsRepo::get_language(conn).ok().flatten())
                 .map(|code| Lang::from_code(&code))
-                .unwrap_or_default()
+                .unwrap_or(Lang::Vi)
         }
     });
     let t = use_context_provider(|| I18n::new(lang));

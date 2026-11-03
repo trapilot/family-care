@@ -3,7 +3,7 @@ use dioxus::prelude::*;
 use crate::i18n::use_i18n;
 use crate::models::{Transaction, TransactionType};
 use crate::views::icons::{emoji_icon, icon_for_emoji, Icon, IconName};
-use crate::views::{fmt_currency, iso_to_display, month_label, theme};
+use crate::views::{fmt_currency, iso_to_display, month_label, theme, ts_to_date_str};
 
 /// `#RRGGBB` from a DB color that may carry an alpha suffix (`#RRGGBBAA`)
 fn hex6(color: &str) -> String {
@@ -320,14 +320,45 @@ pub fn txn_type_look(txn_type: &TransactionType) -> (IconName, &'static str) {
     }
 }
 
-/// One transaction row: icon, title, note, amount. Edit / delete buttons show only when handlers are given.
+/// Wallet part of the meta line, e.g. "A → B" for a transfer; `None` when nothing useful to show.
+/// With `perspective` (a wallet id) the wallet the screen is about is dropped.
+fn wallet_part(txn: &Transaction, from: Option<&str>, to: Option<&str>, perspective: Option<&str>) -> Option<String> {
+    let from = from.filter(|s| !s.is_empty());
+    let to = to.filter(|s| !s.is_empty());
+    match (&txn.txn_type, perspective) {
+        (TransactionType::Transfer, Some(p)) => {
+            if txn.to_wallet_id.as_deref() == Some(p) {
+                from.map(|f| format!("{f} →"))
+            } else {
+                to.map(|t| format!("→ {t}"))
+            }
+        }
+        (_, Some(_)) => None,
+        (TransactionType::Transfer, None) => match (from, to) {
+            (Some(f), Some(t)) => Some(format!("{f} → {t}")),
+            (Some(f), None)    => Some(f.to_string()),
+            (None, Some(t))    => Some(format!("→ {t}")),
+            (None, None)       => None,
+        },
+        (TransactionType::Income, None) => from.map(|f| format!("→ {f}")),
+        (_, None) => from.map(str::to_string),
+    }
+}
+
+/// One transaction row: icon, title, one meta line, amount. Edit / delete buttons show only when handlers are given.
 #[component]
 pub fn TxnItem(
     txn: Transaction,
     /// (emoji, translated name, color) of the category
     #[props(default)] category: Option<(String, String, String)>,
-    /// Wallet name, appended to the title of opening balances
-    #[props(default)] wallet_name: Option<String>,
+    /// Name of `txn.wallet_id`
+    #[props(default)] from_wallet: Option<String>,
+    /// Name of `txn.to_wallet_id` (transfers)
+    #[props(default)] to_wallet: Option<String>,
+    /// Wallet id the screen is about; sign and color become relative to it
+    #[props(default)] perspective: Option<String>,
+    /// Prepend the date to the meta line (screens not grouped by day)
+    #[props(default)] show_date: bool,
     #[props(default = 0)] photos: i64,
     #[props(default)] on_edit: Option<EventHandler<MouseEvent>>,
     #[props(default)] on_delete: Option<EventHandler<MouseEvent>>,
@@ -337,60 +368,93 @@ pub fn TxnItem(
     let type_label = t.code(&txn.txn_type.to_string());
     let (title, icon, color) = match category {
         Some((emoji, name, color)) => (name, Some(emoji), color),
-        None => {
-            let title = match wallet_name {
-                Some(w) => format!("{type_label} · {w}"),
-                None    => type_label,
-            };
-            (title, None, type_color.to_string())
+        None => (type_label, None, type_color.to_string()),
+    };
+
+    let persp = perspective.as_deref();
+    let is_transfer = txn.txn_type == TransactionType::Transfer;
+    let transfer_in = is_transfer && persp.is_some() && txn.to_wallet_id.as_deref() == persp;
+
+    // Amount shown in the main slot
+    let (main_amount, main_currency) = if transfer_in {
+        (txn.to_amount.unwrap_or(txn.amount), txn.to_currency.clone().unwrap_or_else(|| txn.currency.clone()))
+    } else {
+        (txn.amount, txn.currency.clone())
+    };
+    // Second line: the received amount of a cross-currency / converted transfer
+    let second_line = if is_transfer && !transfer_in {
+        match (txn.to_amount, txn.to_currency.as_ref()) {
+            (Some(ta), Some(tc)) if *tc != txn.currency || ta != txn.amount => Some(format!("→ {}", fmt_currency(ta, tc))),
+            _ => None,
+        }
+    } else {
+        None
+    };
+
+    let (amount_color, sign) = if persp.is_some() {
+        match txn.txn_type {
+            TransactionType::Income | TransactionType::OpeningBalance | TransactionType::InvestSell => (theme::POSITIVE, "+"),
+            TransactionType::Transfer if transfer_in => (theme::POSITIVE, "+"),
+            _ => (theme::NEGATIVE, "−"),
+        }
+    } else {
+        match txn.txn_type {
+            TransactionType::Income     => (theme::POSITIVE, "+"),
+            TransactionType::Expense    => (theme::NEGATIVE, "−"),
+            TransactionType::InvestSell => (theme::POSITIVE, ""),
+            _ => (theme::TEXT, ""),
         }
     };
-    let amount_color = match txn.txn_type {
-        TransactionType::Income | TransactionType::InvestSell => theme::POSITIVE,
-        TransactionType::Expense => theme::NEGATIVE,
-        _ => theme::TEXT,
-    };
-    let sign = match txn.txn_type {
-        TransactionType::Income  => "+",
-        TransactionType::Expense => "−",
-        _ => "",
-    };
-    let amount = format!("{sign}{}", fmt_currency(txn.amount, &txn.currency));
-    let note = txn.note.clone().unwrap_or_default();
+    let amount = format!("{sign}{}", fmt_currency(main_amount, &main_currency));
+
+    // Meta line: date · wallets · note
+    let mut parts: Vec<String> = vec![];
+    if show_date { parts.push(ts_to_date_str(txn.txn_date)); }
+    if let Some(w) = wallet_part(&txn, from_wallet.as_deref(), to_wallet.as_deref(), persp) { parts.push(w); }
+    if let Some(note) = txn.note.as_deref().filter(|n| !n.is_empty()) { parts.push(note.to_string()); }
+    let meta = parts.join(" · ");
+    let has_meta = !meta.is_empty() || photos > 0;
     let has_actions = on_edit.is_some() || on_delete.is_some();
 
     rsx! {
         div {
-            style: "display:flex; align-items:center; gap:12px; padding:10px 0;",
-            IconCircle { icon, fallback: type_icon, color, size: 44 }
+            style: "display:flex; align-items:center; gap:10px; padding:6px 0;",
+            IconCircle { icon, fallback: type_icon, color, size: 36 }
             div { style: "flex:1; min-width:0;",
-                div { style: "font-size:15px; color:{theme::TEXT}; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;", "{title}" }
-                if !note.is_empty() {
-                    div { style: "font-size:13px; color:{theme::TEXT_MUTED}; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;", "{note}" }
-                }
-                if photos > 0 {
+                div { style: "font-size:14px; color:{theme::TEXT}; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;", "{title}" }
+                if has_meta {
                     div { style: "display:flex; align-items:center; gap:4px; font-size:12px; color:{theme::TEXT_MUTED};",
-                        Icon { name: IconName::Camera, size: 12 }
-                        "{photos}"
+                        if !meta.is_empty() {
+                            span { style: "min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;", "{meta}" }
+                        }
+                        if photos > 0 {
+                            span { style: "display:inline-flex; align-items:center; gap:2px; flex-shrink:0;",
+                                Icon { name: IconName::Camera, size: 12 }
+                                "{photos}"
+                            }
+                        }
                     }
                 }
             }
             div { style: "display:flex; flex-direction:column; align-items:flex-end; flex-shrink:0;",
-                div { style: "font-size:15px; font-weight:600; color:{amount_color}; white-space:nowrap;", "{amount}" }
+                div { style: "font-size:14px; font-weight:600; color:{amount_color}; white-space:nowrap;", "{amount}" }
+                if let Some(second) = second_line {
+                    div { style: "font-size:11px; color:{theme::TEXT_MUTED}; white-space:nowrap;", "{second}" }
+                }
                 if has_actions {
                     div { style: "display:flex;",
                         if let Some(on_edit) = on_edit {
                             button {
-                                style: "width:32px; height:32px; border:none; background:transparent; cursor:pointer; padding:0; display:flex; align-items:center; justify-content:center;",
+                                style: "width:28px; height:28px; border:none; background:transparent; cursor:pointer; padding:0; display:flex; align-items:center; justify-content:center;",
                                 onclick: move |e| on_edit.call(e),
-                                Icon { name: IconName::Pencil, size: 18, color: theme::TEXT_MUTED.to_string() }
+                                Icon { name: IconName::Pencil, size: 16, color: theme::TEXT_MUTED.to_string() }
                             }
                         }
                         if let Some(on_delete) = on_delete {
                             button {
-                                style: "width:32px; height:32px; border:none; background:transparent; cursor:pointer; padding:0; display:flex; align-items:center; justify-content:center;",
+                                style: "width:28px; height:28px; border:none; background:transparent; cursor:pointer; padding:0; display:flex; align-items:center; justify-content:center;",
                                 onclick: move |e| on_delete.call(e),
-                                Icon { name: IconName::Trash, size: 18, color: theme::TEXT_MUTED.to_string() }
+                                Icon { name: IconName::Trash, size: 16, color: theme::TEXT_MUTED.to_string() }
                             }
                         }
                     }

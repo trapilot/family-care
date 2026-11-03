@@ -67,6 +67,17 @@ impl HoldingRepo {
         rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
     }
 
+    /// Every holding, including sold-out ones (for backups: transactions may reference them)
+    pub fn list_all(conn: &Connection) -> Result<Vec<Holding>> {
+        let mut stmt = conn.prepare(
+            "SELECT id, wallet_id, symbol, name, asset_type, quantity, avg_buy_price, last_price, last_price_at, created_at
+             FROM holdings
+             ORDER BY symbol ASC",
+        )?;
+        let rows = stmt.query_map([], Holding::from_row)?;
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+    }
+
     pub fn list_all_active(conn: &Connection) -> Result<Vec<Holding>> {
         let mut stmt = conn.prepare(
             "SELECT id, wallet_id, symbol, name, asset_type, quantity, avg_buy_price, last_price, last_price_at, created_at

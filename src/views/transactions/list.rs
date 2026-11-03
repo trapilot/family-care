@@ -5,7 +5,7 @@ use rust_decimal::Decimal;
 use crate::app::{AppState, SelectedMonth};
 use crate::models::{Currency, Transaction, TransactionType};
 use crate::repository::transaction_repo::{month_bounds, TxnFilter};
-use crate::repository::{CategoryRepo, TransactionRepo, TxnImageRepo};
+use crate::repository::{CategoryRepo, TransactionRepo, TxnImageRepo, WalletRepo};
 use crate::services::TransactionService;
 use crate::views::icons::IconName;
 use crate::views::ui::{AppHeader, Fab, HeaderAction, TxnItem};
@@ -46,6 +46,14 @@ pub fn TransactionList(view: Signal<TxnView>) -> Element {
                     c.color.unwrap_or_else(|| theme::TEXT_MUTED.to_string()),
                 )))
                 .collect()
+        }
+    });
+
+    // wallet id → name for the wallet part of the rows
+    let wallet_names = use_signal({
+        let state = state.clone();
+        move || -> HashMap<String, String> {
+            state.with_conn(|conn| WalletRepo::names(conn).unwrap_or_default())
         }
     });
 
@@ -202,6 +210,8 @@ pub fn TransactionList(view: Signal<TxnView>) -> Element {
                                         category: txn.category_id.as_deref()
                                             .and_then(|id| categories.read().get(id).cloned())
                                             .map(|(icon, name, color)| (icon, t.tr(&name), color)),
+                                        from_wallet: wallet_names.read().get(&txn.wallet_id).cloned(),
+                                        to_wallet: txn.to_wallet_id.as_deref().and_then(|id| wallet_names.read().get(id).cloned()),
                                         txn: txn.clone(),
                                         on_edit: {
                                             let txn = txn.clone();

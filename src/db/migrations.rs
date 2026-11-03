@@ -210,7 +210,7 @@ fn migrate_v1(conn: &Connection) -> Result<()> {
 
         -- INSERT OR IGNORE keeps values the user already picked
         INSERT OR IGNORE INTO settings (key, value) VALUES ('app_version', '');
-        INSERT OR IGNORE INTO settings (key, value) VALUES ('language', 'en');
+        INSERT OR IGNORE INTO settings (key, value) VALUES ('language', 'vi');  -- Vietnamese by default
         INSERT OR IGNORE INTO settings (key, value) VALUES ('reminder_interval_hours', '4');  -- on a due day, notify every N hours
         INSERT OR IGNORE INTO settings (key, value) VALUES ('reminder_start_time', '08:00');  -- first notification of the day
 

@@ -61,10 +61,19 @@ impl WalletRepo {
     }
 
     pub fn list_active(conn: &Connection) -> Result<Vec<Wallet>> {
+        Self::list_where(conn, "WHERE is_active = 1")
+    }
+
+    /// Every wallet, including removed (inactive) ones (for backups)
+    pub fn list_all(conn: &Connection) -> Result<Vec<Wallet>> {
+        Self::list_where(conn, "")
+    }
+
+    fn list_where(conn: &Connection, filter: &str) -> Result<Vec<Wallet>> {
         let mut stmt = conn.prepare(&format!(
             "SELECT {WALLET_COLUMNS}
              FROM wallets
-             WHERE is_active = 1
+             {filter}
              ORDER BY sort_order ASC, created_at ASC",
         ))?;
         let rows = stmt.query_map([], Wallet::from_row)?;
@@ -85,6 +94,13 @@ impl WalletRepo {
             w.balances = by_wallet.remove(&w.id).unwrap_or_default();
         }
         Ok(wallets)
+    }
+
+    /// id → name of every wallet, including removed (inactive) ones, so old transactions keep their wallet names
+    pub fn names(conn: &Connection) -> Result<HashMap<String, String>> {
+        let mut stmt = conn.prepare("SELECT id, name FROM wallets")?;
+        let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+        Ok(rows.collect::<rusqlite::Result<HashMap<_, _>>>()?)
     }
 
     pub fn update(conn: &Connection, wallet: &Wallet) -> Result<()> {

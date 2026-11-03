@@ -243,6 +243,8 @@ mod tests {
             name: "Vietcombank".into(), wallet_type: WalletType::Bank, broker: None, icon: None, color: None, sort_order: 0,
         }).unwrap();
         SettingsRepo::set_reminder_interval_hours(&conn, interval).unwrap();
+        // Fresh databases default to Vietnamese; these tests check the English text
+        SettingsRepo::set_language(&conn, "en").unwrap();
         (conn, wallet.id)
     }
 

@@ -1,6 +1,6 @@
-# Family Finance
+# Family Money
 
-A local-first personal and family finance management app built with Rust, Dioxus, and SQLite.
+A local-first personal and family money management app built with Rust, Dioxus, and SQLite.
 
 The application is designed for users who want full control over their financial data without relying on cloud services. All data is stored locally and can be backed up using a portable `.bk` file.
 
@@ -175,7 +175,7 @@ dx serve --platform android
 ## Project Goals
 
 * Single-user finance management
-* Family finance organization
+* Family money organization
 * Offline-first experience
 * Simple and transparent financial records
 * Easy backup and restore
@@ -316,7 +316,7 @@ Settings
 ## Project Structure
 
 ```text
-family-finance/
+family-money/
 ├── src/
 │   ├── main.rs
 │   ├── app.rs

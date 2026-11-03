@@ -4,12 +4,11 @@ use std::collections::HashMap;
 
 use crate::app::AppState;
 use crate::i18n::use_i18n;
-use crate::models::{Transaction, TransactionType};
+use crate::models::TransactionType;
 use crate::repository::transaction_repo::{month_bounds, TxnFilter};
 use crate::repository::{CategoryRepo, TransactionRepo, WalletRepo};
-use crate::views::icons::IconName;
-use crate::views::ui::{txn_type_look, IconCircle, ScreenHeader};
-use crate::views::{fmt_currency, fmt_vnd, month_label, theme, ts_to_date_str};
+use crate::views::ui::{ScreenHeader, TxnItem};
+use crate::views::{fmt_vnd, month_label, theme};
 use super::expense::EmptyState;
 
 /// Category look: (translated name, icon, color)
@@ -55,8 +54,7 @@ pub fn TypeTransactions(drill: TypeDrill, on_back: EventHandler<()>) -> Element 
             date_to:   Some(month_bounds(drill.to.0, drill.to.1).1),
             ..Default::default()
         };
-        let wallets: HashMap<String, String> = WalletRepo::list_active(conn).unwrap_or_default()
-            .into_iter().map(|w| (w.id, w.name)).collect();
+        let wallets: HashMap<String, String> = WalletRepo::names(conn).unwrap_or_default();
         let categories: HashMap<String, CategoryLook> = CategoryRepo::list(conn).unwrap_or_default()
             .into_iter().map(|c| (c.id, (t.tr(&c.name), c.icon, c.color))).collect();
         (TransactionRepo::list(conn, &filter).unwrap_or_default(), wallets, categories)
@@ -109,76 +107,27 @@ pub fn TypeTransactions(drill: TypeDrill, on_back: EventHandler<()>) -> Element 
                     div {
                         style: "{theme::CARD} display:flex; flex-direction:column;",
                         for (i, txn) in txns.iter().cloned().enumerate() {
-                            TxnLine {
+                            div {
                                 key: "{txn.id}",
-                                detail: detail_line(&txn, &wallets, &categories, drill.category_id.is_some()),
-                                category: if txn.txn_type == TransactionType::Expense {
-                                    txn.category_id.as_deref().and_then(|c| categories.get(c))
-                                        .map(|(_, icon, color)| (icon.clone(), color.clone()))
-                                } else { None },
-                                last: i + 1 == count,
-                                txn,
+                                style: if i + 1 == count { "" } else { theme::ROW_DIVIDER },
+                                TxnItem {
+                                    category: txn.category_id.as_deref().and_then(|c| categories.get(c))
+                                        .map(|(name, icon, color)| (
+                                            icon.clone().unwrap_or_default(),
+                                            name.clone(),
+                                            color.clone().unwrap_or_else(|| theme::TEXT_MUTED.to_string()),
+                                        )),
+                                    from_wallet: wallets.get(&txn.wallet_id).cloned(),
+                                    to_wallet: txn.to_wallet_id.as_deref().and_then(|id| wallets.get(id).cloned()),
+                                    show_date: true,
+                                    txn,
+                                }
                             }
                         }
                     }
                 }
             }
         }
-    }
-}
-
-/// Read-only row: what it was (category / wallets), note, date, amount
-#[component]
-fn TxnLine(txn: Transaction, detail: String, category: Option<(Option<String>, Option<String>)>, last: bool) -> Element {
-    let note = txn.note.clone().unwrap_or_default();
-    let color = type_color(&txn.txn_type);
-    let (icon, icon_color) = txn_type_look(&txn.txn_type);
-    let sign = match txn.txn_type {
-        TransactionType::Income  => "+",
-        TransactionType::Expense => "−",
-        _ => "",
-    };
-    let divider = if last { "" } else { theme::ROW_DIVIDER };
-    rsx! {
-        div {
-            style: "display:flex; align-items:center; gap:12px; padding:10px 0; {divider}",
-            if let Some((cat_icon, cat_color)) = category {
-                IconCircle {
-                    icon: cat_icon,
-                    fallback: IconName::Tag,
-                    color: cat_color.unwrap_or_else(|| theme::TEXT_MUTED.to_string()),
-                    size: 40,
-                }
-            } else {
-                IconCircle { icon: None, fallback: icon, color: icon_color.to_string(), size: 40 }
-            }
-            div { style: "flex:1; min-width:0;",
-                div { style: "font-size:14px; color:{theme::TEXT}; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;", "{detail}" }
-                if !note.is_empty() {
-                    div { style: "font-size:13px; color:{theme::TEXT_MUTED}; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;", "{note}" }
-                }
-                div { style: "font-size:12px; color:{theme::TEXT_MUTED};", "{ts_to_date_str(txn.txn_date)}" }
-            }
-            div { style: "font-size:14px; font-weight:600; color:{color}; flex-shrink:0;",
-                "{sign}{fmt_currency(txn.amount, &txn.currency)}"
-            }
-        }
-    }
-}
-
-/// `in_category`: the list is already one category (it's in the title), so rows show only the wallet
-fn detail_line(txn: &Transaction, wallets: &HashMap<String, String>, categories: &HashMap<String, CategoryLook>, in_category: bool) -> String {
-    let wallet = |id: &str| wallets.get(id).cloned().unwrap_or_default();
-    match txn.txn_type {
-        TransactionType::Expense if in_category => wallet(&txn.wallet_id),
-        TransactionType::Expense => {
-            let category = txn.category_id.as_deref().and_then(|c| categories.get(c)).map(|(name, _, _)| name.clone()).unwrap_or_default();
-            format!("{category} · {}", wallet(&txn.wallet_id))
-        }
-        TransactionType::Transfer => {
-            format!("{} → {}", wallet(&txn.wallet_id), txn.to_wallet_id.as_deref().map(wallet).unwrap_or_default())
-        }
-        _ => wallet(&txn.wallet_id),
     }
 }
 

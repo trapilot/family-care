@@ -1,4 +1,4 @@
-package com.example.familyfinance.camera
+package com.example.familymoney.camera
 
 import android.app.Activity
 import android.content.ClipData

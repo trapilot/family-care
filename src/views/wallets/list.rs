@@ -61,9 +61,9 @@ pub fn WalletList(view: Signal<WalletView>) -> Element {
     .filter(|(_, ws)| !ws.is_empty())
     .collect();
 
-    // Totals exclude investment wallets (their value lives in holdings)
+    // Totals exclude investment wallets (their value lives in holdings) and credit cards (borrowed money, not owned)
     let regular: Vec<Wallet> = wallets.read().iter()
-        .filter(|w| w.wallet_type != WalletType::Investment)
+        .filter(|w| !matches!(w.wallet_type, WalletType::Investment | WalletType::CreditCard))
         .cloned().collect();
 
     // Net worth per currency

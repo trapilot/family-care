@@ -1,11 +1,11 @@
 [package]
-name = "family-finance"
+name = "family-money"
 version = "1.0.0"
 authors = ["Nam Dinh <namdwb@gmail.com>"]
 edition = "2021"
 
 [[bin]]
-name = "family-finance"
+name = "family-money"
 path = "src/main.rs"
  
 [dependencies]

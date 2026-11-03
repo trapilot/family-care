@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.familyfinance.camera"
+    namespace = "com.example.familymoney.camera"
     compileSdk = 34
     defaultConfig {
         minSdk = 24

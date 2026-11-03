@@ -6,7 +6,7 @@ use crate::models::{
     decimal_to_f64, Currency,
     transaction::{NewTransaction, Transaction, TransactionType},
 };
-use crate::repository::{HoldingRepo, TransactionRepo, WalletRepo};
+use crate::repository::{HoldingRepo, TransactionRepo, TxnImageRepo, WalletRepo};
 use crate::services::HoldingService;
 
 pub struct TransactionService;
@@ -15,11 +15,45 @@ impl TransactionService {
     /// Single entry point for all transaction types.
     /// Wraps everything in a SQLite transaction — either all succeeds or nothing changes.
     pub fn execute(conn: &Connection, input: &NewTransaction) -> Result<Transaction> {
+        Self::execute_with_photos(conn, None, input, &[])
+    }
+
+    /// Replace transaction `old_id` with `input` (an edit): delete + insert in ONE SQL transaction,
+    /// so a failing insert leaves the original untouched.
+    pub fn replace(conn: &Connection, old_id: &str, input: &NewTransaction) -> Result<Transaction> {
+        Self::execute_with_photos(conn, Some(old_id), input, &[])
+    }
+
+    /// Save a transaction with its photos atomically. With `old_id`, the old transaction (and its
+    /// photos) is reversed and removed first; everything commits or rolls back together.
+    pub fn execute_with_photos(
+        conn: &Connection,
+        old_id: Option<&str>,
+        input: &NewTransaction,
+        photos: &[Vec<u8>],
+    ) -> Result<Transaction> {
         Self::validate(conn, input)?;
+
+        let old = match old_id {
+            Some(id) => Some(
+                TransactionRepo::find_by_id(conn, id)?
+                    .ok_or_else(|| AppError::NotFound(format!("transaction '{id}'")))?,
+            ),
+            None => None,
+        };
 
         conn.execute("BEGIN IMMEDIATE", [])?;
 
-        let result = Self::execute_inner(conn, input);
+        let result = (|| -> Result<Transaction> {
+            if let Some(ref old) = old {
+                Self::reverse_inner(conn, old)?;
+            }
+            let saved = Self::execute_inner(conn, input)?;
+            for jpeg in photos {
+                TxnImageRepo::add(conn, &saved.id, jpeg)?;
+            }
+            Ok(saved)
+        })();
 
         match result {
             Ok(txn) => {
@@ -191,6 +225,7 @@ impl TransactionService {
 
         conn.execute("BEGIN IMMEDIATE", [])?;
 
+        // `reverse_inner` is the delete body that assumes an open SQL transaction
         let result = Self::reverse_inner(conn, &txn);
         match result {
             Ok(_) => {
@@ -269,6 +304,21 @@ impl TransactionService {
         let zero_ok = input.txn_type == TransactionType::OpeningBalance;
         if input.amount < Decimal::ZERO || (input.amount.is_zero() && !zero_ok) {
             return Err(AppError::Validation("Amount must be greater than zero".into()));
+        }
+
+        // An empty id would violate the foreign keys: refuse it with a clear message
+        let blank = |id: &Option<String>| id.as_deref().map_or(true, |v| v.trim().is_empty());
+        if input.wallet_id.trim().is_empty() {
+            return Err(AppError::Validation("wallet_id is required".into()));
+        }
+        match input.txn_type {
+            TransactionType::Expense if blank(&input.category_id) =>
+                return Err(AppError::Validation("expense requires category_id".into())),
+            TransactionType::Transfer if blank(&input.to_wallet_id) =>
+                return Err(AppError::Validation("transfer requires to_wallet_id".into())),
+            TransactionType::InvestBuy | TransactionType::InvestSell if blank(&input.holding_id) =>
+                return Err(AppError::Validation("invest transaction requires holding_id".into())),
+            _ => {}
         }
 
         // Wallet must exist; it can hold any money type
@@ -419,5 +469,45 @@ mod tests {
         assert_eq!((w.balance(&Currency::VND), w.balance(&Currency::GOLD)), (before - Decimal::from(1_000), Decimal::from(18)));
         let same = NewTransaction::transfer(&wallet.id, Decimal::from(1_000), Currency::VND, &wallet.id, Decimal::from(1_000), Currency::VND, 7_000);
         assert!(TransactionService::execute(&conn, &same).is_err());
+    }
+
+    #[test]
+    fn failed_edit_keeps_the_original_transaction_balance_and_photo() {
+        let conn = Connection::open_in_memory().unwrap();
+        crate::db::migrations::run(&conn).unwrap();
+        CategoryRepo::seed_defaults(&conn).unwrap();
+        let category = CategoryRepo::list(&conn).unwrap()[0].id.clone();
+        let wallet = WalletRepo::create(&conn, &NewWallet {
+            name: "Cash".into(), wallet_type: WalletType::Cash, broker: None, icon: None, color: None, sort_order: 0,
+        }).unwrap();
+        let balance = || WalletRepo::get_balance(&conn, &wallet.id, &Currency::VND).unwrap();
+        TransactionService::execute(&conn, &NewTransaction::opening_balance(&wallet.id, Decimal::from(1_000), Currency::VND, 1)).unwrap();
+        let original = TransactionService::execute_with_photos(
+            &conn, None,
+            &NewTransaction::expense(&wallet.id, Decimal::from(300), Currency::VND, &category, 2),
+            &[vec![1, 2, 3]],
+        ).unwrap();
+        assert_eq!(balance(), Decimal::from(700));
+
+        // Empty category: refused, nothing changes
+        let bad = NewTransaction::expense(&wallet.id, Decimal::from(100), Currency::VND, "", 3);
+        assert!(TransactionService::replace(&conn, &original.id, &bad).is_err());
+        // Passes validation but fails inside the SQL transaction (more than the balance): rolled back
+        let too_much = NewTransaction::expense(&wallet.id, Decimal::from(5_000), Currency::VND, &category, 3);
+        assert!(TransactionService::replace(&conn, &original.id, &too_much).is_err());
+        // Unknown category: FK failure after the old one was reversed: rolled back
+        let fk = NewTransaction::expense(&wallet.id, Decimal::from(100), Currency::VND, "nope", 3);
+        assert!(TransactionService::replace(&conn, &original.id, &fk).is_err());
+
+        assert!(TransactionRepo::find_by_id(&conn, &original.id).unwrap().is_some());
+        assert_eq!(balance(), Decimal::from(700));
+        assert_eq!(crate::repository::TxnImageRepo::list(&conn, &original.id).unwrap().len(), 1);
+
+        // A valid edit still works
+        let ok = NewTransaction::expense(&wallet.id, Decimal::from(100), Currency::VND, &category, 3);
+        let saved = TransactionService::execute_with_photos(&conn, Some(&original.id), &ok, &[vec![9]]).unwrap();
+        assert_eq!(balance(), Decimal::from(900));
+        assert!(TransactionRepo::find_by_id(&conn, &original.id).unwrap().is_none());
+        assert_eq!(crate::repository::TxnImageRepo::list(&conn, &saved.id).unwrap().len(), 1);
     }
 }
