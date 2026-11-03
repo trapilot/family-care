@@ -25,6 +25,8 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
 
     // ── Reference data ──
     let wallets    = use_signal(|| vec![]);
+    // Credit limit per credit-card wallet (None = card without a limit)
+    let card_limits = use_signal(std::collections::HashMap::<String, Option<Decimal>>::new);
     let categories = use_signal(|| vec![]);
     let holdings   = use_signal(|| vec![]);
     // Every money type (active ones fill the pickers; names also label a hidden type being edited)
@@ -137,6 +139,7 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
     use_effect({
         let state = state.clone();
         let mut wallets    = wallets.clone();
+        let mut card_limits = card_limits;
         let mut categories = categories.clone();
         let mut holdings   = holdings.clone();
         let mut money_types = money_types;
@@ -144,6 +147,9 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
             state.with_conn(|conn| {
                 if let Ok(list) = CurrencyRepo::list(conn)        { money_types.set(list); }
                 if let Ok(ws) = WalletRepo::list_active(conn)    { wallets.set(ws); }
+                if let Ok(cards) = crate::repository::CreditCardRepo::list(conn) {
+                    card_limits.set(cards.into_iter().map(|c| (c.wallet_id, c.credit_limit)).collect());
+                }
                 if let Ok(cs) = CategoryRepo::list(conn)          { categories.set(cs); }
                 if let Ok(hs) = HoldingRepo::list_all_active(conn) { holdings.set(hs); }
             });
@@ -547,7 +553,20 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
                 if let Some(w) = wallets.read().iter().find(|w| w.id == *wallet_id.read()) {
                     div {
                         style: "font-size:12px; color:{theme::TEXT_MUTED};",
-                        "{t.t(\"Available\")}: {fmt_currency(w.balance(&currency()), &currency())}"
+                        {
+                            let cur = currency();
+                            let balance = w.balance(&cur);
+                            if w.wallet_type == crate::models::WalletType::CreditCard {
+                                // A card's balance is what is owed (negative); what can be spent is the remaining credit limit
+                                let owed = (-balance).max(Decimal::ZERO);
+                                match card_limits.read().get(&w.id).copied().flatten() {
+                                    Some(limit) if cur == Currency::VND => format!("{} {}: {}", t.t("Available"), t.t("(credit limit)"), fmt_currency(limit - owed, &cur)),
+                                    _ => format!("{}: {}", t.t("Owed"), fmt_currency(owed, &cur)),
+                                }
+                            } else {
+                                format!("{}: {}", t.t("Available"), fmt_currency(balance, &cur))
+                            }
+                        }
                     }
                 }
             }
