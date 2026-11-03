@@ -193,9 +193,14 @@ pub fn TransactionList(view: Signal<TxnView>) -> Element {
                         div {
                             style: "display:flex; justify-content:space-between; align-items:baseline; padding:0 4px 6px; font-size:13px; font-weight:600; color:{theme::TEXT_MUTED};",
                             span { "{day}" }
+                            // Day total: a small tinted pill so it doesn't read like a transaction amount
                             if !net.is_zero() {
                                 span {
-                                    style: if *net > Decimal::ZERO { "color:#17a589;" } else { "color:#e5527f;" },
+                                    style: if *net > Decimal::ZERO {
+                                        "font-size:11px; font-weight:600; white-space:nowrap; padding:2px 8px; border-radius:999px; background:{theme::POSITIVE_SOFT}; color:{theme::POSITIVE};"
+                                    } else {
+                                        "font-size:11px; font-weight:600; white-space:nowrap; padding:2px 8px; border-radius:999px; background:{theme::NEGATIVE_SOFT}; color:{theme::NEGATIVE};"
+                                    },
                                     if *net > Decimal::ZERO { "+{fmt_vnd(*net)}" } else { "−{fmt_vnd(net.abs())}" }
                                 }
                             }
