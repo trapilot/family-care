@@ -133,9 +133,24 @@ fn plain_numbers_in(text: &str) -> Vec<Decimal> {
 
 /// Biggest money amount across all lines of a recognized photo; when none has a currency marker or
 /// grouping, the biggest bare number instead.
+#[cfg(test)]
 pub fn biggest_amount(page: &OcrPage) -> Option<Decimal> {
     page.lines.iter().flat_map(|l| amounts_in(&l.text)).max()
         .or_else(|| page.lines.iter().flat_map(|l| plain_numbers_in(&l.text)).max())
+}
+
+/// Every amount-like number in a recognized photo, biggest first, without duplicates: amounts with a
+/// currency marker or grouping plus bare 4-9 digit numbers (the user picks the right one).
+pub fn candidate_amounts(page: &OcrPage) -> Vec<Decimal> {
+    let mut out: Vec<Decimal> = page
+        .lines
+        .iter()
+        .flat_map(|l| amounts_in(&l.text).into_iter().chain(plain_numbers_in(&l.text)))
+        .map(|d| d.normalize())
+        .collect();
+    out.sort_by(|a, b| b.cmp(a));
+    out.dedup();
+    out
 }
 
 #[cfg(test)]
@@ -203,5 +218,26 @@ mod tests {
         assert_eq!(biggest_amount(&bare(&["2026-11-02", "02/11/2026", "FT26306123", "1234567890"])), None);
         // A marked amount still wins over a bigger bare number
         assert_eq!(biggest_amount(&bare(&["99999", "50.000đ"])), Some(d("50000")));
+    }
+
+    #[test]
+    fn candidates_all_numbers() {
+        let line = |t: &str| OcrLine {
+            text: t.to_string(),
+            confidence: 1.0,
+            top_left: (0.0, 0.0),
+            top_right: (0.0, 0.0),
+            bottom_left: (0.0, 0.0),
+            bottom_right: (0.0, 0.0),
+        };
+        let page = OcrPage {
+            width: 0,
+            height: 0,
+            lines: ["Tiền hàng 1.100.000", "VAT 110.000", "Tổng 1.210.000", "SĐT 0912345678", "Bàn 25000", "1.210.000 đ"]
+                .iter()
+                .map(|t| line(t))
+                .collect(),
+        };
+        assert_eq!(candidate_amounts(&page), vec![d("1210000"), d("1100000"), d("110000"), d("25000")]);
     }
 }

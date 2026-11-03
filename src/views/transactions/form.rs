@@ -1,5 +1,6 @@
 use dioxus::prelude::*;
 use crate::i18n::use_i18n;
+use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
 use std::str::FromStr;
 
@@ -86,10 +87,9 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
     let mut photo_error = use_signal(|| false);
     let mut preview     = use_signal(|| None::<usize>);
 
-    // Amount detection from photos. `amount_auto` stays true while the amount field holds a
-    // detected value (or is untouched); typing in it turns that off. Editing never overwrites silently.
-    let mut amount_auto = use_signal(|| editing.is_none());
-    let mut detected    = use_signal(Vec::<(u64, Decimal)>::new);
+    // Numbers found by the Scan button, per photo hash. They are offered as tappable chips; a photo
+    // with exactly one number fills the amount; removing photos never changes the amount.
+    let mut detected    = use_signal(Vec::<(u64, Vec<Decimal>)>::new);
     let mut scanning    = use_signal(|| 0usize);
 
     use_photo_picker(move |key, jpeg| match jpeg {
@@ -102,32 +102,35 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
             scanning.set(scanning() + 1);
             spawn(async move {
                 // Any failure (incl. unsupported device) is silent: the user just types the amount
-                if let Ok(page) = ocr::recognize_async(jpeg).await {
-                    if let Some(amount) = receipt::biggest_amount(&page) {
-                        detected.write().push((hash, amount));
-                    }
+                let found = match ocr::recognize_async(jpeg).await {
+                    Ok(page) => receipt::candidate_amounts(&page),
+                    Err(_) => Vec::new(),
+                };
+                // Exactly one number: nothing to choose, use it
+                if let [only] = found.as_slice() {
+                    amount_str.set(only.normalize().to_string());
                 }
+                detected.write().push((hash, found));
                 scanning.set(scanning().saturating_sub(1));
             });
         }
         None => photo_error.set(true),
     });
 
-    // Biggest detected amount among the photos still attached
-    let effective = use_memo(move || {
+    // Numbers found in the photos still attached, biggest first
+    let candidates = use_memo(move || {
         let hashes: Vec<u64> = photos.read().iter().map(|j| photo_hash(j)).collect();
-        detected.read().iter().filter(|(h, _)| hashes.contains(h)).map(|(_, a)| *a).max()
+        let mut all: Vec<Decimal> = detected.read().iter()
+            .filter(|(h, _)| hashes.contains(h))
+            .flat_map(|(_, v)| v.iter().copied())
+            .collect();
+        all.sort_by(|a, b| b.cmp(a));
+        all.dedup();
+        all
     });
-
-    // Fill (or clear) the amount while it is still auto-managed
-    use_effect(move || {
-        let eff = effective();
-        if amount_auto() {
-            match eff {
-                Some(a) => amount_str.set(a.normalize().to_string()),
-                None    => amount_str.set(String::new()),
-            }
-        }
+    let scanned_attached = use_memo(move || {
+        let hashes: Vec<u64> = photos.read().iter().map(|j| photo_hash(j)).collect();
+        detected.read().iter().any(|(h, _)| hashes.contains(h))
     });
 
     // ── Load reference data ──
@@ -283,12 +286,6 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
 
     let title = if editing.is_some() { t.t("Edit Transaction") } else { t.t("New Transaction") };
 
-    // Detected amount that differs from what the user has typed → offer it as a suggestion
-    let suggestion: Option<Decimal> = effective().filter(|a| {
-        !amount_auto() && Decimal::from_str(&amount_str.read()).ok() != Some(*a)
-    });
-    let auto_filled = amount_auto() && effective().is_some();
-
     rsx! {
         div {
             style: "display:flex; flex-direction:column; min-height:100%;",
@@ -342,12 +339,12 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
                         options: wallets.read().iter().map(|w| (w.id.clone(), w.name.clone())).collect()
                     }
                 }
-                // Camera-only scan: the photo is attached and its amount is detected
+                // Camera-only scan (front camera): the photo is attached and its amount is detected
                 label {
                     style: "width:44px; flex-shrink:0; display:flex; align-items:center; justify-content:center; background:{theme::PRIMARY_SOFT}; cursor:pointer;",
                     aria_label: t.t("Scan"),
                     Icon { name: IconName::Camera, size: 20, color: theme::PRIMARY.to_string() }
-                    PhotoInput { key_name: "scan", camera: true }
+                    PhotoInput { key_name: "scan", camera: true, front: true }
                 }
             }
 
@@ -470,7 +467,7 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
                 style: "display:flex; gap:8px;",
                 AmountInput {
                     value: amount_str.read().clone(),
-                    oninput: move |v| { amount_auto.set(false); amount_str.set(v); },
+                    oninput: move |v| { amount_str.set(v); },
                     style: AMOUNT_WITH_CURRENCY_STYLE.to_string(),
                 }
                 CurrencySelect {
@@ -487,33 +484,34 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
                     Icon { name: IconName::Clock, size: 14 }
                     {t.t("Reading amount from photo…")}
                 }
-            } else if let Some(a) = suggestion {
-                {
-                    let detected_label = t.t("Detected {amount}").replace("{amount}", &fmt_vnd(a));
-                    rsx! {
-                        div {
-                            style: "display:flex; align-items:center; gap:6px; font-size:12px;",
-                            span {
-                                style: "display:inline-flex; align-items:center; gap:6px; background:{theme::PRIMARY_SOFT}; color:{theme::PRIMARY}; border-radius:999px; padding:4px 6px 4px 10px; font-weight:600;",
-                                Icon { name: IconName::Sparkles, size: 14 }
-                                "{detected_label}"
+            }
+            if !candidates().is_empty() {
+                div {
+                    style: "display:flex; flex-wrap:wrap; gap:6px; align-items:center;",
+                    span {
+                        style: "font-size:12px; color:{theme::TEXT_MUTED};",
+                        {t.t("Pick the amount:")}
+                    }
+                    for a in candidates() {
+                        {
+                            let selected = Decimal::from_str(&amount_str.read()).ok() == Some(a);
+                            let (bg, fg) = if selected { (theme::PRIMARY, "#fff") } else { (theme::PRIMARY_SOFT, theme::PRIMARY) };
+                            let label = fmt_vnd(Decimal::from(a.to_i64().unwrap_or(0)));
+                            rsx! {
                                 button {
-                                    style: "border:none; border-radius:999px; background:{theme::PRIMARY}; color:#fff; font-size:12px; font-weight:600; padding:3px 10px; cursor:pointer;",
-                                    onclick: move |_| {
-                                        amount_str.set(a.normalize().to_string());
-                                        amount_auto.set(true);
-                                    },
-                                    {t.t("Use")}
+                                    key: "{a}",
+                                    style: "border:none; border-radius:999px; background:{bg}; color:{fg}; font-size:12px; font-weight:600; padding:4px 10px; cursor:pointer;",
+                                    onclick: move |_| amount_str.set(a.normalize().to_string()),
+                                    "{label}"
                                 }
                             }
                         }
                     }
                 }
-            } else if auto_filled {
+            } else if scanning() == 0 && scanned_attached() {
                 div {
-                    style: "display:flex; align-items:center; gap:6px; font-size:12px; color:{theme::TEXT_MUTED};",
-                    Icon { name: IconName::Sparkles, size: 14 }
-                    {t.t("Filled from photo")}
+                    style: "font-size:12px; color:{theme::TEXT_MUTED};",
+                    {t.t("No numbers found in the photo")}
                 }
             }
             // Available balance of the chosen wallet in the chosen money type

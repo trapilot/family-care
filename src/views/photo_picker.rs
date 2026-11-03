@@ -6,7 +6,8 @@ use dioxus::prelude::*;
 /// phase so the WebView's own camera / photo-library picker opens; every chosen photo is
 /// shrunk to ≤max_size px (1600 by default) JPEG here and sent back as `{key, data}` (data = base64, "" on failure).
 /// On Android (`__ffNativeCamera`) camera inputs are not opened by the WebView (it picks the front camera):
-/// the click is cancelled and `{key, capture: max}` asks Rust to run the native rear-camera capture.
+/// the click is cancelled and `{key, capture: max, front}` asks Rust to run the native capture with the
+/// lens the input asks for (`capture="user"` = front, `environment` = rear).
 const PICK_PHOTO_JS: &str = r#"
     const old = window.__ffPhotoPick;
     if (old) {
@@ -19,7 +20,7 @@ const PICK_PHOTO_JS: &str = r#"
         e.stopPropagation();
         if (window.__ffNativeCamera && e.target.hasAttribute('capture')) {
             e.preventDefault();
-            dioxus.send({ key: e.target.dataset.photoPick, data: '', capture: Number(e.target.dataset.photoMax) || 1600 });
+            dioxus.send({ key: e.target.dataset.photoPick, data: '', capture: Number(e.target.dataset.photoMax) || 1600, front: e.target.getAttribute('capture') === 'user' });
         }
     };
     const shrink = (key, max, file) => {
@@ -63,6 +64,10 @@ struct PickedPhoto {
     /// Longest side for a native camera capture request (0 = not a capture request)
     #[serde(default)]
     capture: u32,
+    /// With `capture`: use the front (selfie) camera
+    #[serde(default)]
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+    front: bool,
 }
 
 /// Listen for photos chosen through any `PhotoInput` on screen. `on_photo` gets the input's
@@ -80,7 +85,7 @@ pub fn use_photo_picker(mut on_photo: impl FnMut(&str, Option<Vec<u8>>) + 'stati
             while let Ok(msg) = eval.recv::<PickedPhoto>().await {
                 if msg.capture > 0 {
                     #[cfg(target_os = "android")]
-                    if let Some(jpeg) = crate::android::capture_photo(msg.capture).await {
+                    if let Some(jpeg) = crate::android::capture_photo(msg.capture, msg.front).await {
                         on_photo(&msg.key, jpeg);
                     }
                     continue;
@@ -99,6 +104,8 @@ pub fn PhotoInput(
     key_name: String,
     #[props(default)] multiple: bool,
     #[props(default)] camera: bool,
+    /// With `camera`: ask for the front (selfie) camera
+    #[props(default)] front: bool,
     /// Longest side of the shrunk photo in pixels
     #[props(default = 1600)] max_size: u32,
 ) -> Element {
@@ -108,7 +115,7 @@ pub fn PhotoInput(
             accept: "image/*",
             style: "display:none;",
             multiple,
-            "capture": if camera { "environment" },
+            "capture": if camera { if front { "user" } else { "environment" } },
             "data-photo-pick": "{key_name}",
             "data-photo-max": "{max_size}",
         }

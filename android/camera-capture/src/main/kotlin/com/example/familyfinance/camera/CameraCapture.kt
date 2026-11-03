@@ -26,7 +26,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 
 /**
- * Rear-camera capture and ML Kit text recognition, called from Rust over JNI.
+ * Front/rear camera capture and ML Kit text recognition, called from Rust over JNI.
  * Every public method catches Throwable: a pending Java exception would poison the caller's JNIEnv.
  */
 class CameraCapture(private val activity: Activity) {
@@ -34,8 +34,8 @@ class CameraCapture(private val activity: Activity) {
     @Volatile private var pending = false
     private var launcher: ActivityResultLauncher<Intent>? = null
 
-    /** Opens the camera app (rear camera). Returns 1 if started, 0 if not (Int: Rust side can't read a JNI boolean). */
-    fun capture(maxSize: Int): Int {
+    /** Opens the camera app (front camera when `front` != 0, else rear). Returns 1 if started, 0 if not (Ints: Rust side can't read a JNI boolean). */
+    fun capture(maxSize: Int, front: Int): Int {
         try {
             if (pending) return 0
             val probe = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
@@ -53,10 +53,17 @@ class CameraCapture(private val activity: Activity) {
                     val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
                         putExtra(MediaStore.EXTRA_OUTPUT, uri)
                         addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        // Rear-camera hints: camera apps read different extras
-                        putExtra("android.intent.extras.CAMERA_FACING", 0)
-                        putExtra("android.intent.extras.LENS_FACING_BACK", 1)
-                        putExtra("android.intent.extra.USE_FRONT_CAMERA", false)
+                        // Lens hints: camera apps read different extras and may ignore them
+                        if (front != 0) {
+                            putExtra("android.intent.extras.CAMERA_FACING", 1)
+                            putExtra("android.intent.extras.LENS_FACING_FRONT", 1)
+                            putExtra("android.intent.extra.USE_FRONT_CAMERA", true)
+                            putExtra("com.google.assistant.extra.USE_FRONT_CAMERA", true)
+                        } else {
+                            putExtra("android.intent.extras.CAMERA_FACING", 0)
+                            putExtra("android.intent.extras.LENS_FACING_BACK", 1)
+                            putExtra("android.intent.extra.USE_FRONT_CAMERA", false)
+                        }
                     }
                     val l = (activity as ComponentActivity).activityResultRegistry.register(
                         "ff_camera_capture", ActivityResultContracts.StartActivityForResult()

@@ -9,3 +9,7 @@
 # DB Local
 *.db
 *.db-*
+
+# build.sh output
+/family-finance-*.apk
+/family-finance-*.app

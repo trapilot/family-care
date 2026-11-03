@@ -56,6 +56,38 @@ pub struct BackupData {
     pub currencies: Vec<CurrencyInfo>,
 }
 
+/// Dioxus desktop/mobile swaps clicks on file inputs for its own native dialog (app storage only).
+/// Stop the click in the capture phase so the WebView's own picker opens (any folder), and send the
+/// chosen file back as `{name, content}` (content = null when it couldn't be read).
+const PICK_BACKUP_JS: &str = r#"
+    const old = window.__ffBackupPick;
+    if (old) { document.removeEventListener('click', old.click, true); document.removeEventListener('change', old.change, true); }
+    const ours = t => t instanceof HTMLInputElement && t.id === 'ff-backup-import';
+    const click = e => { if (ours(e.target)) e.stopPropagation(); };
+    const change = e => {
+        const input = e.target;
+        if (!ours(input)) return;
+        e.stopPropagation();
+        const file = input.files && input.files[0];
+        input.value = '';          // picking the same file again fires change again
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => dioxus.send({ name: file.name, content: String(reader.result || '') });
+        reader.onerror = () => dioxus.send({ name: file.name, content: null });
+        reader.readAsText(file);
+    };
+    document.addEventListener('click', click, true);
+    document.addEventListener('change', change, true);
+    window.__ffBackupPick = { click, change };
+"#;
+
+/// What `PICK_BACKUP_JS` sends for a chosen file
+#[derive(serde::Deserialize)]
+struct PickedBackup {
+    name:    String,
+    content: Option<String>,
+}
+
 // ─── BackupSettings view ─────────────────────────────────────────────────────
 
 // ─── Action to execute after PIN verification ─────────────────────────────────
@@ -63,24 +95,44 @@ pub struct BackupData {
 enum PendingAction {
     Export,
     ImportFromFile(PathBuf),
-    ImportFileFromPicker,
+    /// A file chosen with the system picker (name + text content)
+    ImportFromContent { name: String, content: String },
 }
 
 #[component]
 pub fn BackupSettings() -> Element {
     let t = use_i18n();
     let state   = use_context::<AppState>();
-    let status  = use_signal(|| String::new());
+    let mut status  = use_signal(|| String::new());
     let app_version = use_signal({
         let state = state.clone();
         move || state.with_conn(|conn| SettingsRepo::get_app_version(conn).ok().flatten()).unwrap_or_default()
     });
-    let is_ok   = use_signal(|| true);
+    let mut is_ok   = use_signal(|| true);
     let backups = use_signal(|| Vec::<PathBuf>::new());
 
     // PIN verification modal state
     let mut show_pin_modal = use_signal(|| false);
     let mut pending_action = use_signal(|| None::<PendingAction>);
+
+    // Picked backup file: read in JS, then confirmed with the PIN like the other actions
+    use_hook(move || {
+        spawn(async move {
+            let mut eval = document::eval(PICK_BACKUP_JS);
+            while let Ok(msg) = eval.recv::<PickedBackup>().await {
+                match msg.content {
+                    Some(content) => {
+                        pending_action.set(Some(PendingAction::ImportFromContent { name: msg.name, content }));
+                        show_pin_modal.set(true);
+                    }
+                    None => {
+                        status.set(t.t("❌ Failed to read file").to_string());
+                        is_ok.set(false);
+                    }
+                }
+            }
+        });
+    });
 
     // ── Load backups on mount and when needed ──
     let mut load_backups_effect = backups.clone();
@@ -140,11 +192,34 @@ pub fn BackupSettings() -> Element {
         }
     };
 
+    let handle_import_content = {
+        let state = state.clone();
+        let mut status = status.clone();
+        let mut is_ok  = is_ok.clone();
+        let mut backups = backups.clone();
+        move |name: String, content: String| {
+            match state.with_conn(|conn| import_backup(conn, &content)) {
+                Ok(stats) => {
+                    // Best effort: keep a copy in the app's backup list (the import already succeeded)
+                    let _ = save_to_backup_folder_from_string(&content, &name);
+                    backups.set(list_backup_files());
+                    status.set(format!("✅ {} {}: {}", t.t("Imported from file"), name, stats));
+                    is_ok.set(true);
+                }
+                Err(e) => {
+                    status.set(format!("❌ {}: {e}", t.t("Import failed")));
+                    is_ok.set(false);
+                }
+            }
+        }
+    };
+
     let handle_verified = {
         let mut show_pin_modal = show_pin_modal.clone();
         let mut pending_action = pending_action.clone();
         let mut handle_export = handle_export.clone();
         let mut handle_import = handle_import.clone();
+        let mut handle_import_content = handle_import_content.clone();
         move |_| {
             if let Some(action) = pending_action.take() {
                 match action {
@@ -154,8 +229,8 @@ pub fn BackupSettings() -> Element {
                     PendingAction::ImportFromFile(path) => {
                         handle_import(path);
                     }
-                    PendingAction::ImportFileFromPicker => {
-                        // We'll handle this in the JS eval part when we get there
+                    PendingAction::ImportFromContent { name, content } => {
+                        handle_import_content(name, content);
                     }
                 }
             }
@@ -271,81 +346,17 @@ pub fn BackupSettings() -> Element {
             // ── Import from file ──
             div {
                 style: "background:#fff; border-radius:16px; padding:16px;",
-                h2 { style: "margin:0 0 8px; font-size:14px; font-weight:600; color:{theme::TEXT};", {t.t("Import from shared file")} }
+                h2 { style: "margin:0 0 8px; font-size:14px; font-weight:600; color:{theme::TEXT};", {t.t("Import from file")} }
                 p  { style: "margin:0 0 12px; font-size:13px; color:{theme::DANGER}; line-height:1.5; background:{theme::NEGATIVE_SOFT}; border-radius:12px; padding:10px 12px;",
-                    IconText { text: t.t("⚠️ Import will REPLACE all existing data. This cannot be undone. Select a shared backup file to import it.").to_string(), color: theme::DANGER.to_string(), gap: 8 }
+                    IconText { text: t.t("⚠️ Import will REPLACE all existing data. This cannot be undone. Pick a backup file (.bk) to import it.").to_string(), color: theme::DANGER.to_string(), gap: 8 }
                 }
                 label {
                     style: "{theme::BTN_PRIMARY} display:flex; align-items:center; justify-content:center; gap:8px; width:100%; box-sizing:border-box; text-align:center;",
                     IconText { text: t.t("📥 Import File").to_string(), size: 18, color: "#ffffff".to_string(), gap: 8 }
                     input {
+                        id: "ff-backup-import",
                         r#type: "file",
-                        accept: ".bk,.ffbackup",
                         style: "display:none;",
-                        oninput: move |_e| {
-                            let state = state.clone();
-                            let status = status.clone();
-                            let is_ok = is_ok.clone();
-                            let backups = backups.clone();
-                            let js = r#"
-                                (function() {
-                                    const input = document.querySelector('input[type="file"][accept=".bk,.ffbackup"]');
-                                    if (input && input.files && input.files.length > 0) {
-                                        const file = input.files[0];
-                                        const reader = new FileReader();
-                                        reader.onload = function(e) {
-                                            const content = e.target.result;
-                                            const filename = file.name;
-                                            // Return both
-                                            dioxus.send(JSON.stringify({ filename, content }));
-                                        };
-                                        reader.onerror = function() {
-                                            dioxus.send("error");
-                                        };
-                                        reader.readAsText(file);
-                                    }
-                                })();
-                            "#;
-                            let mut eval = dioxus::document::eval(js);
-                            let mut status_clone = status.clone();
-                            let mut is_ok_clone = is_ok.clone();
-                            let mut backups_clone = backups.clone();
-                            let state_clone = state.clone();
-                            let _ = dioxus::prelude::spawn(async move {
-                                if let Ok(result) = eval.recv::<String>().await {
-                                    if result == "error" {
-                                        status_clone.set(t.t("❌ Failed to read file").to_string());
-                                        is_ok_clone.set(false);
-                                        return;
-                                    }
-                                    if let Ok(data) = serde_json::from_str::<serde_json::Value>(&result) {
-                                        let filename = data["filename"].as_str().unwrap_or("imported.bk").to_string();
-                                        let content = data["content"].as_str().unwrap_or("").to_string();
-                                        let save_result = save_to_backup_folder_from_string(&content, &filename);
-                                        match save_result {
-                                            Ok(path) => {
-                                                let import_result = state_clone.with_conn(|conn| import_backup(conn, &content));
-                                                match import_result {
-                                                    Ok(stats) => {
-                                                        status_clone.set(format!("✅ {} {}: {}", t.t("Imported from file"), path.display(), stats));
-                                                        is_ok_clone.set(true);
-                                                        backups_clone.set(list_backup_files());
-                                                    }
-                                                    Err(e) => {
-                                                        status_clone.set(format!("❌ {}: {e}", t.t("Import failed")));
-                                                        is_ok_clone.set(false);
-                                                    }
-                                                }
-                                            }
-                                            Err(e) => {
-                                                status_clone.set(format!("❌ {}: {e}", t.t("Save failed")));
-                                                is_ok_clone.set(false);
-                                            }
-                                        }
-                                    }
-                                }
-                            });
-                        },
                     }
                 }
             }
@@ -800,6 +811,14 @@ fn load_members(conn: &rusqlite::Connection) -> Vec<Member> {
 }
 
 fn ensure_backup_folder() -> std::io::Result<PathBuf> {
+    // Android's cwd is read-only: use the app's private files dir (same derivation as main.rs)
+    #[cfg(target_os = "android")]
+    let backup_dir = {
+        let cmdline = std::fs::read("/proc/self/cmdline")?;
+        let package = String::from_utf8_lossy(cmdline.split(|b| *b == 0).next().unwrap_or_default()).into_owned();
+        PathBuf::from("/data/data").join(package).join("files").join("backup")
+    };
+    #[cfg(not(target_os = "android"))]
     let backup_dir = PathBuf::from("backup");
     if !backup_dir.exists() {
         std::fs::create_dir_all(&backup_dir)?;
@@ -849,12 +868,20 @@ fn save_to_backup_folder(json: &str) -> crate::error::Result<PathBuf> {
 fn save_to_backup_folder_from_string(json: &str, original_filename: &str) -> crate::error::Result<PathBuf> {
     use std::io::Write;
     let backup_dir = ensure_backup_folder()?;
-    let mut path = backup_dir.join(original_filename);
+    // Keep only the file name (no folder escape) and make sure it ends in .bk so the list shows it
+    let mut name = std::path::Path::new(original_filename)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("imported.bk")
+        .to_string();
+    if std::path::Path::new(&name).extension().and_then(|e| e.to_str()) != Some("bk") {
+        name.push_str(".bk");
+    }
+    let mut path = backup_dir.join(&name);
     let mut counter = 1;
     while path.exists() {
-        let stem = std::path::Path::new(original_filename).file_stem().and_then(|s| s.to_str()).unwrap_or("imported");
-        let ext = std::path::Path::new(original_filename).extension().and_then(|s| s.to_str()).unwrap_or("bk");
-        path = backup_dir.join(format!("{}_{}.{}", stem, counter, ext));
+        let stem = std::path::Path::new(&name).file_stem().and_then(|s| s.to_str()).unwrap_or("imported");
+        path = backup_dir.join(format!("{}_{}.bk", stem, counter));
         counter += 1;
     }
     let mut f = std::fs::File::create(&path)?;

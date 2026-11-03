@@ -1,4 +1,4 @@
-//! Android native helpers (android/camera-capture Gradle module, bundled by dx): rear-camera capture and
+//! Android native helpers (android/camera-capture Gradle module, bundled by dx): camera capture and
 //! ML Kit text recognition.
 
 use std::sync::OnceLock;
@@ -11,7 +11,7 @@ use manganis::jni::objects::{JClass, JValue};
 extern "Kotlin" {
     pub type CameraCapture;
     // Returns 1 when started, else 0 (manganis' `bool` return conversion doesn't compile with jni 0.21)
-    pub fn capture(this: &CameraCapture, max_size: i32) -> i32;
+    pub fn capture(this: &CameraCapture, max_size: i32, front: i32) -> i32;
     pub fn take_result(this: &CameraCapture) -> Option<String>;
     pub fn recognize_text(this: &CameraCapture, jpeg_base64: String) -> String;
 }
@@ -60,11 +60,11 @@ fn plugin() -> Option<&'static CameraCapture> {
         .as_ref()
 }
 
-/// Open the rear camera and wait for the photo (JPEG, long side <= `max_size`).
+/// Open the front or rear camera and wait for the photo (JPEG, long side <= `max_size`).
 /// `None` = user cancelled; `Some(None)` = failed (no camera app / unreadable); `Some(Some(jpeg))` = photo.
-pub async fn capture_photo(max_size: u32) -> Option<Option<Vec<u8>>> {
+pub async fn capture_photo(max_size: u32, front: bool) -> Option<Option<Vec<u8>>> {
     let Some(plugin) = plugin() else { return Some(None) };
-    if !matches!(capture(plugin, max_size as i32), Ok(1)) {
+    if !matches!(capture(plugin, max_size as i32, front as i32), Ok(1)) {
         return Some(None);
     }
     loop {
