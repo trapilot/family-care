@@ -114,7 +114,7 @@ pub fn HoldingsView(wallet_id: String) -> Element {
                         let mut load  = load.clone();
                         move |_: MouseEvent| {
                             let price_str = price_input.read().clone();
-                            if let Ok(price) = price_str.parse::<Decimal>() {
+                            if let Some(price) = price_str.trim().parse::<Decimal>().ok().filter(|p| *p > Decimal::ZERO) {
                                 state.with_conn(|conn| {
                                     let _ = HoldingService::update_last_price(conn, &id, price);
                                 });

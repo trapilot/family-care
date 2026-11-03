@@ -18,6 +18,8 @@ pub fn FamilyForm(view: Signal<MemberView>, editing: Option<Family>) -> Element 
     let mut common_address = use_signal(|| editing.as_ref().and_then(|f| f.common_address.clone()).unwrap_or_default());
     let mut note = use_signal(|| editing.as_ref().and_then(|f| f.note.clone()).unwrap_or_default());
 
+    let mut error_msg = use_signal(String::new);
+
     let state1 = state.clone();
     let state2 = state.clone();
 
@@ -50,32 +52,44 @@ pub fn FamilyForm(view: Signal<MemberView>, editing: Option<Family>) -> Element 
                 }
             }
 
+            if !error_msg.read().is_empty() {
+                div {
+                    style: "background:{theme::NEGATIVE_SOFT}; border-radius:0; padding:10px 12px; font-size:13px; color:{theme::DANGER};",
+                    "{error_msg.read()}"
+                }
+            }
+
             // Save button
             button {
                 style: "{theme::BTN_PRIMARY} margin-top:8px;",
                 onclick: move |_| {
                     let name_val = name.read().trim().to_string();
                     if name_val.is_empty() {
+                        error_msg.set(t.t("Family name is required").into());
                         return;
                     }
 
-                    state1.with_conn(|conn| {
+                    let result = state1.with_conn(|conn| -> crate::error::Result<()> {
                         if let Some(family) = &editing {
                             let mut updated = family.clone();
                             updated.name = name_val;
                             updated.common_address = if common_address.read().is_empty() { None } else { Some(common_address.read().clone()) };
                             updated.note = if note.read().is_empty() { None } else { Some(note.read().clone()) };
-                            let _ = FamilyRepo::update(conn, &updated);
+                            FamilyRepo::update(conn, &updated)?;
                         } else {
                             let new_family = crate::models::family::NewFamily {
                                 name: name_val,
                                 common_address: if common_address.read().is_empty() { None } else { Some(common_address.read().clone()) },
                                 note: if note.read().is_empty() { None } else { Some(note.read().clone()) },
                             };
-                            let _ = FamilyRepo::create(conn, &new_family);
+                            FamilyRepo::create(conn, &new_family)?;
                         }
+                        Ok(())
                     });
-                    view.set(MemberView::List);
+                    match result {
+                        Ok(_)  => { view.set(MemberView::List); }
+                        Err(e) => { error_msg.set(e.to_string()); }
+                    }
                 },
                 {t.t("Save")}
             }

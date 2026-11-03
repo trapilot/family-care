@@ -240,9 +240,17 @@ pub fn BillsSettings() -> Element {
                 error.set(t.t("Day must be 1–31").into());
                 return;
             };
+            // Empty = no amount; anything else must be a number >= 0 (0 also means "no amount")
+            let bill_amount = match amount.read().trim() {
+                "" => None,
+                raw => match raw.parse::<Decimal>() {
+                    Ok(a) if a >= Decimal::ZERO => Some(a).filter(|a| !a.is_zero()),
+                    _ => { error.set(t.t("Invalid amount").into()); return; }
+                },
+            };
             let input = NewBill {
                 name:    bill_name,
-                amount:  amount.read().parse::<Decimal>().ok().filter(|a| !a.is_zero()),
+                amount:  bill_amount,
                 due_day: day,
             };
             match editing() {

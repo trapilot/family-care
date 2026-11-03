@@ -187,8 +187,9 @@ fn CatForm(
             let budget = if budget_str.read().is_empty() {
                 None
             } else {
-                match Decimal::from_str(&budget_str.read()) {
-                    Ok(b) => Some(b),
+                match Decimal::from_str(budget_str.read().trim()) {
+                    Ok(b) if b >= Decimal::ZERO => Some(b),
+                    Ok(_) => { error_msg.set(t.t("Invalid budget amount").into()); return; }
                     Err(_) => { error_msg.set(t.t("Invalid budget amount").into()); return; }
                 }
             };

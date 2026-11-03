@@ -365,6 +365,8 @@ fn vi(en: &str) -> Option<&'static str> {
         "New Member"                           => "Thành viên mới",
         "Edit Member"                          => "Sửa thành viên",
         "Full name is required"                => "Vui lòng nhập họ tên",
+        "Family name is required" => "Vui lòng nhập tên gia đình",
+        "Name and unit are required" => "Vui lòng nhập tên và đơn vị",
         "Avatar"                               => "Ảnh đại diện",
         "Full Name *"                          => "Họ và tên *",
         "Unassigned"                           => "Chưa có",

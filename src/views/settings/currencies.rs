@@ -120,9 +120,14 @@ pub fn CurrenciesSettings() -> Element {
                                                 let info = info.clone();
                                                 let code = code.clone();
                                                 move |_| {
+                                                    let (new_name, new_unit) = (name.read().trim().to_string(), unit.read().trim().to_string());
+                                                    if new_name.is_empty() || new_unit.is_empty() {
+                                                        error.set(Some((code.clone(), t.t("Name and unit are required").to_string())));
+                                                        return;
+                                                    }
                                                     let mut updated = info.clone();
-                                                    updated.name = name.read().clone();
-                                                    updated.unit = unit.read().clone();
+                                                    updated.name = new_name;
+                                                    updated.unit = new_unit;
                                                     if apply(code.clone(), &|conn| CurrencyRepo::update(conn, &updated)) {
                                                         editing.set(None);
                                                     }

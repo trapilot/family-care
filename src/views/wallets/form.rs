@@ -88,6 +88,7 @@ pub fn WalletForm(view: Signal<WalletView>, editing: Option<Wallet>) -> Element 
                 let amount = match raw.as_str() {
                     "" => Decimal::ZERO,
                     s  => match Decimal::from_str(s) {
+                        Ok(b) if b < Decimal::ZERO => { error_msg.set(t.t("Invalid balance").into()); return; }
                         Ok(b) => b,
                         Err(_) => { error_msg.set(t.t("Invalid balance").into()); return; }
                     },
