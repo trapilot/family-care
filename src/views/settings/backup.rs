@@ -782,7 +782,7 @@ fn import_backup(conn: &rusqlite::Connection, json: &str) -> crate::error::Resul
             DELETE FROM wallet_balances;
             DELETE FROM credit_cards;
             DELETE FROM wallets;
-            DELETE FROM categories WHERE is_system = 0;
+            DELETE FROM categories;
             DELETE FROM member_id_images;
             DELETE FROM members;
             DELETE FROM families;
@@ -886,18 +886,29 @@ fn import_backup(conn: &rusqlite::Connection, json: &str) -> crate::error::Resul
             )?;
         }
 
-        // Insert categories (skip system — already seeded)
-        for c in data.categories.iter().filter(|c| !c.is_system) {
+        // Categories, system ones included: transactions reference system categories by id and
+        // those ids differ per install, so they are restored with the file's ids.
+        // Pass 1: insert every category with parent_id NULL (a child may precede its parent).
+        for c in &data.categories {
             conn.execute(
                 "INSERT OR REPLACE INTO categories
                  (id,name,icon,color,budget_amount,parent_id,sort_order,is_system,created_at)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,0,?8)",
+                 VALUES (?1,?2,?3,?4,?5,NULL,?6,?7,?8)",
                 rusqlite::params![
                     c.id, c.name, c.icon, c.color,
-                    c.budget_f64(), c.parent_id, c.sort_order, c.created_at,
+                    c.budget_f64(), c.sort_order, c.is_system as i32, c.created_at,
                 ],
             )?;
         }
+        // Pass 2: link the parents
+        for c in data.categories.iter().filter(|c| c.parent_id.is_some()) {
+            conn.execute(
+                "UPDATE categories SET parent_id = ?1 WHERE id = ?2",
+                rusqlite::params![c.parent_id, c.id],
+            )?;
+        }
+        // Built-in categories missing from the file (old or empty backups) are re-created
+        crate::repository::CategoryRepo::seed_defaults(conn)?;
 
         // Insert transactions (raw — no balance recalculation)
         for t in &data.transactions {
@@ -1288,5 +1299,44 @@ mod tests {
         assert_eq!(count(&conn, "bills"), 0);
         assert_eq!(SettingsRepo::get_language(&conn).unwrap().as_deref(), Some("vi"));
         assert!(SettingsRepo::verify_pin(&conn, "1111").unwrap());
+    }
+
+    #[test]
+    fn import_into_fresh_install_keeps_system_category_ids() {
+        let fresh = || {
+            let conn = rusqlite::Connection::open_in_memory().unwrap();
+            crate::db::migrations::run(&conn).unwrap();
+            conn.execute_batch("PRAGMA foreign_keys = ON").unwrap();
+            crate::repository::CategoryRepo::seed_defaults(&conn).unwrap();
+            conn
+        };
+        let defaults = crate::models::category::default_categories().len() as i64;
+        let system_count = |c: &rusqlite::Connection| -> i64 {
+            c.query_row("SELECT COUNT(*) FROM categories WHERE is_system = 1", [], |r| r.get(0)).unwrap()
+        };
+
+        let a = fresh();
+        let category: String = a.query_row("SELECT id FROM categories WHERE is_system = 1 LIMIT 1", [], |r| r.get(0)).unwrap();
+        let wallet = WalletRepo::create(&a, &NewWallet {
+            name: "Cash".into(), wallet_type: WalletType::Cash, broker: None, icon: None, color: None, sort_order: 0,
+        }).unwrap();
+        TransactionService::execute(&a, &NewTransaction::opening_balance(&wallet.id, Decimal::from(1_000), Currency::VND, 1)).unwrap();
+        TransactionService::execute(&a, &NewTransaction::expense(&wallet.id, Decimal::from(100), Currency::VND, &category, 2)).unwrap();
+        let json = export_backup(&a).unwrap();
+
+        let b = fresh();
+        import_backup(&b, &json).unwrap();
+
+        let imported: String = b.query_row("SELECT category_id FROM transactions WHERE category_id IS NOT NULL", [], |r| r.get(0)).unwrap();
+        assert_eq!(imported, category);
+        assert_eq!(system_count(&b), defaults);
+
+        // A file without categories gets the built-in ones re-seeded
+        let empty = r#"{
+            "app_version": "0.1.0", "exported_at": 1,
+            "wallets": [], "holdings": [], "categories": [], "transactions": [], "members": [], "families": []
+        }"#;
+        import_backup(&b, empty).unwrap();
+        assert_eq!(count(&b, "categories"), defaults);
     }
 }
