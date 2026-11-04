@@ -37,11 +37,15 @@ pub fn WalletList(view: Signal<WalletView>) -> Element {
                     .filter_map(|c| CreditCardService::summary(conn, c, today).ok().map(|s| (c.wallet_id.clone(), s)))
                     .collect();
                 card_summaries.set(summaries);
-                if let Ok(ws) = WalletRepo::list_active(conn) { wallets.set(ws); }
+                if let Ok(ws) = WalletRepo::list_all(conn) { wallets.set(ws); }
                 if let Ok(list) = CurrencyRepo::list(conn) { money_types.set(list); }
             });
         }
     });
+
+    // Groups list active wallets only; disabled ones are listed apart. Totals and the credit
+    // summary still count every wallet (a disabled wallet is kept for tracking).
+    let (active, disabled): (Vec<Wallet>, Vec<Wallet>) = wallets.read().iter().cloned().partition(|w| w.is_active);
 
     // Group wallets by type, in display order (empty groups are skipped)
     let groups: Vec<(&'static str, Vec<Wallet>)> = [
@@ -54,7 +58,7 @@ pub fn WalletList(view: Signal<WalletView>) -> Element {
     ]
     .into_iter()
     .map(|(wallet_type, title)| {
-        let ws: Vec<Wallet> = wallets.read().iter()
+        let ws: Vec<Wallet> = active.iter()
             .filter(|w| w.wallet_type == wallet_type)
             .cloned().collect();
         (title, ws)
@@ -150,6 +154,30 @@ pub fn WalletList(view: Signal<WalletView>) -> Element {
                                             let w = wallet.clone();
                                             move |_| { view.set(WalletView::Edit(w.clone())); }
                                         }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if !disabled.is_empty() {
+                    div {
+                        style: "display:flex; flex-direction:column; gap:14px;",
+                        SectionTitle { title: t.t("Disabled").to_string() }
+                        div {
+                            style: "opacity:.5; display:flex; flex-direction:column; gap:14px;",
+                            for wallet in disabled.iter() {
+                                WalletRow {
+                                    wallet: wallet.clone(),
+                                    card: None,
+                                    on_tap: {
+                                        let w = wallet.clone();
+                                        move |_| { view.set(WalletView::Detail(w.clone())); }
+                                    },
+                                    on_edit: {
+                                        let w = wallet.clone();
+                                        move |_| { view.set(WalletView::Edit(w.clone())); }
                                     }
                                 }
                             }

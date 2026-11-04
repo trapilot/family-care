@@ -7,11 +7,11 @@ use crate::models::holding::AssetType;
 use crate::services::{holding_service::HoldingWithPnl, HoldingService};
 use crate::views::icons::{Icon, IconName};
 use crate::views::ui::IconTile;
-use crate::views::{fmt_currency, theme, AmountInput};
+use crate::views::{fmt_currency, fmt_number, theme, AmountInput};
 use crate::models::Currency;
 
 #[component]
-pub fn HoldingsView(wallet_id: String) -> Element {
+pub fn HoldingsView(wallet_id: String, #[props(default = false)] readonly: bool) -> Element {
     let t = use_i18n();
     let state    = use_context::<AppState>();
     let holdings = use_signal(|| vec![]);
@@ -98,6 +98,7 @@ pub fn HoldingsView(wallet_id: String) -> Element {
                 HoldingCard {
                     item: item.clone(),
                     is_editing_price: *edit_price_id.read() == Some(item.holding.id.clone()),
+                    readonly,
                     price_input: price_input.read().clone(),
                     on_edit_price: {
                         let id    = item.holding.id.clone();
@@ -136,6 +137,7 @@ pub fn HoldingsView(wallet_id: String) -> Element {
 fn HoldingCard(
     item: HoldingWithPnl,
     is_editing_price: bool,
+    #[props(default = false)] readonly: bool,
     price_input: String,
     on_edit_price:   EventHandler<MouseEvent>,
     on_price_input:  EventHandler<String>,
@@ -191,9 +193,9 @@ fn HoldingCard(
             // ── Stats grid ──
             div {
                 style: "display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:10px;",
-                StatCell { label: t.t("Qty"),       value: format!("{:.4}", h.quantity) }
-                StatCell { label: t.t("Avg Cost"),  value: format!("{:.0}", h.avg_buy_price) }
-                StatCell { label: t.t("Last Price"), value: h.last_price.map(|p| format!("{p:.0}")).unwrap_or("—".into()) }
+                StatCell { label: t.t("Qty"),       value: fmt_number(h.quantity) }
+                StatCell { label: t.t("Avg Cost"),  value: fmt_number(h.avg_buy_price) }
+                StatCell { label: t.t("Last Price"), value: h.last_price.map(fmt_number).unwrap_or("—".into()) }
                 StatCell { label: t.t("Cost Basis"), value: format!("{:.0}", item.cost_basis) }
                 StatCell { label: t.t("Mkt Value"),  value: item.market_value.map(|v| format!("{v:.0}")).unwrap_or("—".into()) }
                 StatCell { label: t.t("Type"),       value: t.code(&h.asset_type.to_string()) }
@@ -220,7 +222,7 @@ fn HoldingCard(
                         Icon { name: IconName::X, size: 16 }
                     }
                 }
-            } else {
+            } else if !readonly {
                 button {
                     style: "width:100%; padding:10px; border:1px dashed #e6e6ef; border-radius:0; background:transparent; color:#8a8d9f; font-size:13px; cursor:pointer;",
                     onclick: move |e| { on_edit_price.call(e); },

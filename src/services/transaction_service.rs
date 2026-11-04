@@ -32,8 +32,35 @@ impl TransactionService {
         input: &NewTransaction,
         photos: &[Vec<u8>],
     ) -> Result<Transaction> {
-        Self::validate(conn, input)?;
+        Self::execute_atomic(conn, old_id, input, None, photos)
+    }
 
+    /// Buy by typed code: the (wallet, code) holding is found or created inside the same SQL transaction,
+    /// so a failed save leaves no empty holding behind. `input.holding_id` is ignored.
+    pub fn execute_buy_by_symbol(
+        conn: &Connection,
+        old_id: Option<&str>,
+        input: &NewTransaction,
+        symbol: &str,
+        photos: &[Vec<u8>],
+    ) -> Result<Transaction> {
+        let symbol = symbol.trim().to_uppercase();
+        if symbol.is_empty() {
+            return Err(AppError::Validation("Code is required".into()));
+        }
+        if input.txn_type != TransactionType::InvestBuy {
+            return Err(AppError::Validation("Only a buy can be saved by code".into()));
+        }
+        Self::execute_atomic(conn, old_id, input, Some(&symbol), photos)
+    }
+
+    fn execute_atomic(
+        conn: &Connection,
+        old_id: Option<&str>,
+        input: &NewTransaction,
+        buy_symbol: Option<&str>,
+        photos: &[Vec<u8>],
+    ) -> Result<Transaction> {
         let old = match old_id {
             Some(id) => Some(
                 TransactionRepo::find_by_id(conn, id)?
@@ -45,12 +72,41 @@ impl TransactionService {
         conn.execute("BEGIN IMMEDIATE", [])?;
 
         let result = (|| -> Result<Transaction> {
+            // Resolve the holding first (inside the SQL transaction, so a rollback removes it too)
+            let resolved;
+            let input = match buy_symbol {
+                Some(sym) => {
+                    let mut i = input.clone();
+                    // A code with '-' (e.g. BTC-USD) is a crypto pair; anything else is a stock
+                    let asset_type = if sym.contains('-') {
+                        crate::models::AssetType::Crypto
+                    } else {
+                        crate::models::AssetType::Stock
+                    };
+                    i.holding_id = Some(HoldingService::get_or_create(
+                        conn, &i.wallet_id, sym, None, asset_type,
+                    )?);
+                    resolved = i;
+                    &resolved
+                }
+                None => input,
+            };
+            // Read-only checks; an error rolls everything back
+            Self::validate(conn, input)?;
             if let Some(ref old) = old {
                 Self::reverse_inner(conn, old)?;
             }
             let saved = Self::execute_inner(conn, input)?;
             for jpeg in photos {
                 TxnImageRepo::add(conn, &saved.id, jpeg)?;
+            }
+            // Re-applying an edited buy must not leave the old holding short of shares
+            if let Some(ref old) = old {
+                if matches!(old.txn_type, TransactionType::InvestBuy | TransactionType::InvestSell) {
+                    if let Some(ref hid) = old.holding_id {
+                        Self::ensure_not_negative(conn, hid)?;
+                    }
+                }
             }
             Ok(saved)
         })();
@@ -179,6 +235,10 @@ impl TransactionService {
         let price = input.asset_price
             .ok_or_else(|| AppError::Validation("invest_buy requires asset_price".into()))?;
 
+        let holding = HoldingRepo::find_by_id(conn, holding_id)?
+            .ok_or_else(|| AppError::NotFound(format!("holding '{holding_id}'")))?;
+        Self::check_whole_shares(&holding, qty)?;
+
         // Deduct cost from wallet
         let total_cost = qty * price;
         Self::check_balance(conn, &input.wallet_id, &input.currency, total_cost)?;
@@ -201,9 +261,14 @@ impl TransactionService {
             .ok_or_else(|| AppError::Validation("invest_sell requires asset_price".into()))?;
 
         // Check sufficient holding quantity
+        let holding = HoldingRepo::find_by_id(conn, holding_id)?
+            .ok_or_else(|| AppError::NotFound(format!("holding '{holding_id}'")))?;
+        Self::check_whole_shares(&holding, qty)?;
         let current_qty = HoldingRepo::get_quantity(conn, holding_id)?;
         if qty > current_qty {
-            return Err(AppError::InsufficientQuantity(holding_id.clone()));
+            return Err(AppError::Validation(format!(
+                "Not enough quantity: you hold {} {}", current_qty.normalize(), holding.symbol
+            )));
         }
 
         // Reduce holding quantity
@@ -226,7 +291,10 @@ impl TransactionService {
         conn.execute("BEGIN IMMEDIATE", [])?;
 
         // `reverse_inner` is the delete body that assumes an open SQL transaction
-        let result = Self::reverse_inner(conn, &txn);
+        let result = Self::reverse_inner(conn, &txn).and_then(|_| match (&txn.txn_type, &txn.holding_id) {
+            (TransactionType::InvestBuy | TransactionType::InvestSell, Some(hid)) => Self::ensure_not_negative(conn, hid),
+            _ => Ok(()),
+        });
         match result {
             Ok(_) => {
                 conn.execute("COMMIT", [])?;
@@ -266,7 +334,7 @@ impl TransactionService {
                 WalletRepo::add_balance(conn, &txn.wallet_id, &txn.currency, decimal_to_f64(total))?;
                 // Reduce holding quantity; avg price recalculation is approximate on reversal
                 let current_qty = HoldingRepo::get_quantity(conn, holding_id)?;
-                let new_qty = (current_qty - qty).max(Decimal::ZERO);
+                let new_qty = current_qty - qty;
                 let avg = HoldingRepo::get_avg_price(conn, holding_id)?;
                 HoldingRepo::update_position(conn, holding_id, new_qty, avg)?;
             }
@@ -297,6 +365,24 @@ impl TransactionService {
         Ok(())
     }
 
+    /// Stocks trade in whole shares only; crypto may be fractional.
+    fn check_whole_shares(holding: &crate::models::Holding, qty: Decimal) -> Result<()> {
+        if holding.asset_type == crate::models::AssetType::Stock && qty.fract() != Decimal::ZERO {
+            return Err(AppError::Validation("Stock quantity must be a whole number".into()));
+        }
+        Ok(())
+    }
+
+    /// Fails (so the surrounding SQL transaction rolls back) when a holding's quantity went below zero.
+    fn ensure_not_negative(conn: &Connection, holding_id: &str) -> Result<()> {
+        if HoldingRepo::get_quantity(conn, holding_id)? < Decimal::ZERO {
+            return Err(AppError::Validation(
+                "Some of these shares were already sold — edit or delete the sell first".into(),
+            ));
+        }
+        Ok(())
+    }
+
     // ─── Validation ──────────────────────────────────────────────────────────
 
     fn validate(conn: &Connection, input: &NewTransaction) -> Result<()> {
@@ -322,8 +408,11 @@ impl TransactionService {
         }
 
         // Wallet must exist; it can hold any money type
-        WalletRepo::find_by_id(conn, &input.wallet_id)?
+        let wallet = WalletRepo::find_by_id(conn, &input.wallet_id)?
             .ok_or_else(|| AppError::NotFound(format!("wallet '{}'", input.wallet_id)))?;
+        if !wallet.is_active {
+            return Err(AppError::Validation(format!("Wallet '{}' is disabled", wallet.name)));
+        }
 
         match input.txn_type {
             TransactionType::Income => {
@@ -348,8 +437,11 @@ impl TransactionService {
                 if input.to_amount.is_none() {
                     return Err(AppError::Validation("transfer requires to_amount".into()));
                 }
-                WalletRepo::find_by_id(conn, to_id)?
+                let to_wallet = WalletRepo::find_by_id(conn, to_id)?
                     .ok_or_else(|| AppError::NotFound(format!("wallet '{to_id}'")))?;
+                if !to_wallet.is_active {
+                    return Err(AppError::Validation(format!("Wallet '{}' is disabled", to_wallet.name)));
+                }
             }
             TransactionType::OpeningBalance => {}
             TransactionType::InvestBuy | TransactionType::InvestSell => {
@@ -509,5 +601,150 @@ mod tests {
         assert_eq!(balance(), Decimal::from(900));
         assert!(TransactionRepo::find_by_id(&conn, &original.id).unwrap().is_none());
         assert_eq!(crate::repository::TxnImageRepo::list(&conn, &saved.id).unwrap().len(), 1);
+    }
+
+    fn broker_conn(wallet_type: WalletType) -> (Connection, String) {
+        let conn = Connection::open_in_memory().unwrap();
+        crate::db::migrations::run(&conn).unwrap();
+        CategoryRepo::seed_defaults(&conn).unwrap();
+        let wallet = WalletRepo::create(&conn, &NewWallet {
+            name: "Broker".into(), wallet_type, broker: None, icon: None, color: None, sort_order: 0,
+        }).unwrap();
+        TransactionService::execute(&conn, &NewTransaction::opening_balance(&wallet.id, Decimal::from(1_000_000), Currency::VND, 1_000)).unwrap();
+        (conn, wallet.id)
+    }
+
+    #[test]
+    fn buy_by_symbol_creates_then_reuses_the_holding() {
+        let (conn, wid) = broker_conn(WalletType::Investment);
+        let buy = |sym: &str, qty: i64, price: i64| TransactionService::execute_buy_by_symbol(
+            &conn, None,
+            &NewTransaction::invest_buy(&wid, "", Decimal::from(qty), Decimal::from(price), Currency::VND, 2_000),
+            sym, &[],
+        ).unwrap();
+
+        buy(" vnm ", 10, 1000);
+        let first = HoldingRepo::find_by_wallet_and_symbol(&conn, &wid, "VNM").unwrap().unwrap();
+        assert_eq!(first.quantity, Decimal::from(10));
+
+        buy("VNM", 5, 2000);
+        let second = HoldingRepo::find_by_wallet_and_symbol(&conn, &wid, "VNM").unwrap().unwrap();
+        assert_eq!((second.id, second.quantity), (first.id, Decimal::from(15)));
+        let balance = WalletRepo::get_balance(&conn, &wid, &Currency::VND).unwrap();
+        assert_eq!(balance, Decimal::from(1_000_000 - 20_000));
+    }
+
+    #[test]
+    fn failed_buy_by_symbol_leaves_no_holding() {
+        let (conn, wid) = broker_conn(WalletType::Investment);
+        let too_big = NewTransaction::invest_buy(&wid, "", Decimal::from(1_000), Decimal::from(5_000), Currency::VND, 2_000);
+        assert!(TransactionService::execute_buy_by_symbol(&conn, None, &too_big, "FPT", &[]).is_err());
+        assert!(HoldingRepo::find_by_wallet_and_symbol(&conn, &wid, "FPT").unwrap().is_none());
+    }
+
+    #[test]
+    fn buy_by_symbol_rejects_blank_code_and_non_investment_wallet() {
+        let (conn, wid) = broker_conn(WalletType::Investment);
+        let buy = |w: &str| NewTransaction::invest_buy(w, "", Decimal::from(1), Decimal::from(1_000), Currency::VND, 2_000);
+        assert!(TransactionService::execute_buy_by_symbol(&conn, None, &buy(&wid), "  ", &[]).is_err());
+
+        let (conn, cash) = broker_conn(WalletType::Cash);
+        assert!(TransactionService::execute_buy_by_symbol(&conn, None, &buy(&cash), "VNM", &[]).is_err());
+    }
+
+    #[test]
+    fn buy_by_symbol_with_dash_creates_crypto_holding() {
+        let conn = Connection::open_in_memory().unwrap();
+        crate::db::migrations::run(&conn).unwrap();
+        CategoryRepo::seed_defaults(&conn).unwrap();
+        let wallet = WalletRepo::create(&conn, &NewWallet {
+            name: "Invest".into(), wallet_type: WalletType::Investment, broker: None, icon: None, color: None, sort_order: 0,
+        }).unwrap();
+        let open = NewTransaction::opening_balance(&wallet.id, Decimal::from(100_000), Currency::USD, 1_000);
+        TransactionService::execute(&conn, &open).unwrap();
+        let buy = NewTransaction::invest_buy(&wallet.id, "", Decimal::from(1), Decimal::from(100), Currency::USD, 2_000);
+        let txn = TransactionService::execute_buy_by_symbol(&conn, None, &buy, "btc-usd", &[]).unwrap();
+        let holding = crate::repository::HoldingRepo::find_by_id(&conn, txn.holding_id.as_deref().unwrap()).unwrap().unwrap();
+        assert_eq!(holding.symbol, "BTC-USD");
+        assert_eq!(holding.asset_type, crate::models::AssetType::Crypto);
+    }
+
+    fn invest_conn() -> (Connection, String) {
+        broker_conn(WalletType::Investment)
+    }
+
+    #[test]
+    fn stock_quantity_must_be_whole_but_crypto_may_be_fractional() {
+        let (conn, wid) = invest_conn();
+        let buy = |qty: &str, price: i64| NewTransaction::invest_buy(
+            &wid, "", qty.parse().unwrap(), Decimal::from(price), Currency::VND, 2_000,
+        );
+        assert!(TransactionService::execute_buy_by_symbol(&conn, None, &buy("1.5", 1000), "VNM.VN", &[]).is_err());
+        assert!(TransactionService::execute_buy_by_symbol(&conn, None, &buy("0.5", 1000), "BTC-USD", &[]).is_ok());
+    }
+
+    #[test]
+    fn selling_more_than_held_is_refused() {
+        let (conn, wid) = invest_conn();
+        let buy = NewTransaction::invest_buy(&wid, "", Decimal::from(3), Decimal::from(1000), Currency::VND, 2_000);
+        let txn = TransactionService::execute_buy_by_symbol(&conn, None, &buy, "VNM", &[]).unwrap();
+        let hid = txn.holding_id.unwrap();
+        let sell = NewTransaction::invest_sell(&wid, &hid, Decimal::from(4), Decimal::from(1000), Currency::VND, 3_000);
+        let err = TransactionService::execute(&conn, &sell).unwrap_err().to_string();
+        assert!(err.contains("Not enough quantity"), "{err}");
+    }
+
+    #[test]
+    fn editing_or_deleting_a_buy_cannot_leave_negative_shares() {
+        let (conn, wid) = invest_conn();
+        let buy = |qty: i64| NewTransaction::invest_buy(&wid, "", Decimal::from(qty), Decimal::from(1000), Currency::VND, 2_000);
+        let bought = TransactionService::execute_buy_by_symbol(&conn, None, &buy(10), "VNM", &[]).unwrap();
+        let hid = bought.holding_id.clone().unwrap();
+        let sell = NewTransaction::invest_sell(&wid, &hid, Decimal::from(5), Decimal::from(1000), Currency::VND, 3_000);
+        TransactionService::execute(&conn, &sell).unwrap();
+        let held = || HoldingRepo::get_quantity(&conn, &hid).unwrap();
+        assert_eq!(held(), Decimal::from(5));
+
+        assert!(TransactionService::delete(&conn, &bought.id).is_err());
+        assert_eq!(held(), Decimal::from(5));
+
+        TransactionService::execute_buy_by_symbol(&conn, Some(&bought.id), &buy(12), "VNM", &[]).unwrap();
+        assert_eq!(held(), Decimal::from(7));
+        let edited = TransactionRepo::list(&conn, &crate::repository::transaction_repo::TxnFilter {
+            txn_type: Some(TransactionType::InvestBuy), ..Default::default()
+        }).unwrap().remove(0);
+
+        assert!(TransactionService::execute_buy_by_symbol(&conn, Some(&edited.id), &buy(3), "VNM", &[]).is_err());
+        assert_eq!(held(), Decimal::from(7));
+    }
+
+    #[test]
+    fn disabled_wallet_accepts_no_transactions_until_enabled() {
+        let conn = Connection::open_in_memory().unwrap();
+        crate::db::migrations::run(&conn).unwrap();
+        CategoryRepo::seed_defaults(&conn).unwrap();
+        let category = CategoryRepo::list(&conn).unwrap()[0].id.clone();
+        let new = |name: &str| WalletRepo::create(&conn, &NewWallet {
+            name: name.into(), wallet_type: WalletType::Cash, broker: None, icon: None, color: None, sort_order: 0,
+        }).unwrap();
+        let (a, b) = (new("A"), new("B"));
+        TransactionService::execute(&conn, &NewTransaction::opening_balance(&a.id, Decimal::from(1_000), Currency::VND, 1)).unwrap();
+        TransactionService::execute(&conn, &NewTransaction::opening_balance(&b.id, Decimal::from(1_000), Currency::VND, 1)).unwrap();
+        let spent = TransactionService::execute(&conn, &NewTransaction::expense(&a.id, Decimal::from(100), Currency::VND, &category, 2)).unwrap();
+
+        WalletRepo::set_active(&conn, &a.id, false).unwrap();
+        let expense = NewTransaction::expense(&a.id, Decimal::from(100), Currency::VND, &category, 3);
+        let err = TransactionService::execute(&conn, &expense).unwrap_err().to_string();
+        assert!(err.contains("disabled"), "{err}");
+        assert!(TransactionService::delete(&conn, &spent.id).is_err());
+        assert!(TransactionRepo::find_by_id(&conn, &spent.id).unwrap().is_some());
+        let into_a = NewTransaction::transfer(&b.id, Decimal::from(50), Currency::VND, &a.id, Decimal::from(50), Currency::VND, 4);
+        assert!(TransactionService::execute(&conn, &into_a).is_err());
+        assert!(TransactionService::set_opening_balance(&conn, &a.id, Decimal::from(5), Currency::VND, "x").is_err());
+
+        WalletRepo::set_active(&conn, &a.id, true).unwrap();
+        TransactionService::execute(&conn, &expense).unwrap();
+        TransactionService::execute(&conn, &into_a).unwrap();
+        TransactionService::delete(&conn, &spent.id).unwrap();
     }
 }

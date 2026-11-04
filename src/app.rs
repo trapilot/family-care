@@ -44,6 +44,10 @@ impl AppState {
 #[derive(Clone, Copy)]
 pub struct SelectedMonth(pub Signal<(i32, u32)>);
 
+/// Transaction types picked by the Transactions screen's chips; kept for the whole app session
+#[derive(Clone, Copy)]
+pub struct TxnTypeFilter(pub Signal<Vec<crate::models::TransactionType>>);
+
 /// Active bottom tab, so a screen can jump to another tab (e.g. Overview → Transactions)
 #[derive(Clone, Copy)]
 pub struct ActiveTab(pub Signal<Tab>);
@@ -140,6 +144,11 @@ fn MainApp() -> Element {
     use_context_provider(|| ActiveTab(active_tab));
     let selected_month = use_signal(crate::views::current_month);
     use_context_provider(|| SelectedMonth(selected_month));
+    let txn_types = use_signal(|| {
+        use crate::models::TransactionType;
+        vec![TransactionType::Income, TransactionType::Expense, TransactionType::Transfer]
+    });
+    use_context_provider(|| TxnTypeFilter(txn_types));
     crate::views::rates::use_rates_provider();
 
     // Once per launch: ask to show notifications and re-schedule the next 14 days

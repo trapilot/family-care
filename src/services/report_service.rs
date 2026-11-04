@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use crate::error::Result;
-use crate::models::{f64_to_decimal, Currency, TransactionType};
+use crate::models::{f64_to_decimal, AssetType, Currency, TransactionType};
 use crate::repository::{CategoryRepo, HoldingRepo, TransactionRepo};
 
 // ─── Output Types ─────────────────────────────────────────────────────────────
@@ -60,6 +60,9 @@ pub struct InvestmentPnlItem {
     pub symbol:        String,
     pub name:          Option<String>,
     pub wallet_id:     String,
+    pub asset_type:    AssetType,
+    /// Money type of the holding's latest buy (VND when none)
+    pub currency:      Currency,
     pub quantity:      Decimal,
     pub avg_buy_price: Decimal,
     pub last_price:    Option<Decimal>,
@@ -214,11 +217,25 @@ impl ReportService {
                 }
             });
 
+            let currency = conn
+                .query_row(
+                    "SELECT currency FROM transactions
+                     WHERE holding_id = ?1 AND txn_type = 'invest_buy'
+                     ORDER BY txn_date DESC LIMIT 1",
+                    [&h.id],
+                    |row| row.get::<_, String>(0),
+                )
+                .ok()
+                .and_then(|c| c.parse::<Currency>().ok())
+                .unwrap_or(Currency::VND);
+
             items.push(InvestmentPnlItem {
                 holding_id:         h.id,
                 symbol:             h.symbol,
                 name:               h.name,
                 wallet_id:          h.wallet_id,
+                asset_type:         h.asset_type,
+                currency,
                 quantity:           h.quantity,
                 avg_buy_price:      h.avg_buy_price,
                 last_price:         h.last_price,
@@ -230,7 +247,7 @@ impl ReportService {
             });
         }
 
-        Ok(items)
+        Ok(group_by_code(items))
     }
 
     /// Realized P&L = SUM((sell_price - avg_buy_at_sell_time) * qty) for all sells
@@ -323,5 +340,104 @@ impl ReportService {
 
     pub fn income_expense_timeline(conn: &Connection, months: u32) -> Result<Vec<MonthlySummary>> {
         Self::monthly_trend(conn, months)
+    }
+}
+
+/// Merge holdings of the same code (trimmed, uppercased symbol) bought in the same money type into one item.
+fn group_by_code(items: Vec<InvestmentPnlItem>) -> Vec<InvestmentPnlItem> {
+    let mut groups: Vec<InvestmentPnlItem> = Vec::new();
+    let mut index: HashMap<(String, Currency), usize> = HashMap::new();
+
+    for it in items {
+        let key = (it.symbol.trim().to_uppercase(), it.currency.clone());
+        match index.get(&key) {
+            Some(&i) => {
+                let g = &mut groups[i];
+                g.quantity += it.quantity;
+                g.cost_basis += it.cost_basis;
+                g.realized_pnl += it.realized_pnl;
+                if g.name.is_none() {
+                    g.name = it.name;
+                }
+                if g.last_price.is_none() {
+                    g.last_price = it.last_price;
+                }
+            }
+            None => {
+                index.insert(key.clone(), groups.len());
+                let mut g = it;
+                g.symbol = key.0;
+                groups.push(g);
+            }
+        }
+    }
+
+    for g in &mut groups {
+        if g.quantity > Decimal::ZERO {
+            g.avg_buy_price = g.cost_basis / g.quantity;
+        }
+        g.market_value = g.last_price.map(|p| p * g.quantity);
+        g.unrealized_pnl = g.market_value.map(|mv| mv - g.cost_basis);
+        g.unrealized_pnl_pct = g.unrealized_pnl.and_then(|u| {
+            if g.cost_basis > Decimal::ZERO {
+                Some(u / g.cost_basis * Decimal::from(100))
+            } else {
+                None
+            }
+        });
+    }
+    groups
+}
+
+#[cfg(test)]
+mod group_by_code_tests {
+    use super::*;
+
+    fn item(id: &str, symbol: &str, currency: Currency, qty: i64, avg: i64, realized: i64) -> InvestmentPnlItem {
+        InvestmentPnlItem {
+            holding_id: id.to_string(),
+            symbol: symbol.to_string(),
+            name: None,
+            wallet_id: format!("w-{id}"),
+            asset_type: AssetType::Stock,
+            currency,
+            quantity: Decimal::from(qty),
+            avg_buy_price: Decimal::from(avg),
+            last_price: None,
+            cost_basis: Decimal::from(qty * avg),
+            market_value: None,
+            realized_pnl: Decimal::from(realized),
+            unrealized_pnl: None,
+            unrealized_pnl_pct: None,
+        }
+    }
+
+    #[test]
+    fn merges_same_code() {
+        let out = group_by_code(vec![
+            item("a", "VNM.VN", Currency::VND, 10, 1000, 5),
+            item("b", " vnm.vn ", Currency::VND, 30, 2000, 7),
+        ]);
+        assert_eq!(out.len(), 1);
+        let g = &out[0];
+        assert_eq!(g.holding_id, "a");
+        assert_eq!(g.symbol, "VNM.VN");
+        assert_eq!(g.quantity, Decimal::from(40));
+        assert_eq!(g.cost_basis, Decimal::from(70_000));
+        assert_eq!(g.avg_buy_price, Decimal::from(1750));
+        assert_eq!(g.realized_pnl, Decimal::from(12));
+    }
+
+    #[test]
+    fn splits_by_currency_and_keeps_order() {
+        let out = group_by_code(vec![
+            item("a", "AAA", Currency::VND, 1, 10, 0),
+            item("b", "BBB", Currency::VND, 1, 10, 0),
+            item("c", "AAA", Currency::USD, 1, 10, 0),
+            item("d", "aaa", Currency::VND, 1, 10, 0),
+        ]);
+        let ids: Vec<_> = out.iter().map(|i| i.holding_id.as_str()).collect();
+        assert_eq!(ids, vec!["a", "b", "c"]);
+        assert_eq!(out[0].quantity, Decimal::from(2));
     }
 }

@@ -38,11 +38,7 @@ impl RateService {
             return false;
         }
 
-        let Ok(client) = reqwest::Client::builder()
-            .timeout(HTTP_TIMEOUT)
-            .user_agent("Mozilla/5.0")
-            .build()
-        else {
+        let Some(client) = http_client() else {
             return false;
         };
 
@@ -105,10 +101,23 @@ struct YahooChartBody { result: Option<Vec<YahooResult>> }
 struct YahooResult { meta: YahooMeta }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct YahooMeta { regular_market_price: f64 }
+struct YahooMeta {
+    regular_market_price: f64,
+    #[serde(default)]
+    currency: Option<String>,
+}
 
-/// Latest quote for a Yahoo Finance symbol (no API key needed)
-async fn yahoo_price(client: &reqwest::Client, symbol: &str) -> Result<f64> {
+/// Shared HTTP client for the online price/rate sources
+pub(crate) fn http_client() -> Option<reqwest::Client> {
+    reqwest::Client::builder()
+        .timeout(HTTP_TIMEOUT)
+        .user_agent("Mozilla/5.0")
+        .build()
+        .ok()
+}
+
+/// Latest quote (price + quote currency) for a Yahoo Finance symbol (no API key needed)
+pub(crate) async fn yahoo_quote(client: &reqwest::Client, symbol: &str) -> Result<(f64, Option<String>)> {
     let url = format!("https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range=1d");
     let chart: YahooChart = client.get(url).send().await
         .and_then(|r| r.error_for_status())
@@ -118,9 +127,14 @@ async fn yahoo_price(client: &reqwest::Client, symbol: &str) -> Result<f64> {
 
     chart.chart.result
         .and_then(|r| r.into_iter().next())
-        .map(|r| r.meta.regular_market_price)
-        .filter(|p| *p > 0.0)
+        .map(|r| (r.meta.regular_market_price, r.meta.currency))
+        .filter(|(p, _)| *p > 0.0)
         .ok_or_else(|| AppError::Network(format!("no price for {symbol}")))
+}
+
+/// Latest price for a Yahoo Finance symbol
+async fn yahoo_price(client: &reqwest::Client, symbol: &str) -> Result<f64> {
+    yahoo_quote(client, symbol).await.map(|(price, _)| price)
 }
 
 /// VND for 1 USD

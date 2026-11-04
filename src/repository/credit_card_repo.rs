@@ -15,12 +15,12 @@ impl CreditCardRepo {
         ).optional().map_err(Into::into)
     }
 
-    /// Settings of active credit-card wallets
+    /// Settings of credit-card wallets (disabled ones included: they stay tracked)
     pub fn list(conn: &Connection) -> Result<Vec<CreditCard>> {
         let mut stmt = conn.prepare(
             "SELECT c.* FROM credit_cards c
              JOIN wallets w ON w.id = c.wallet_id
-             WHERE w.is_active = 1 AND w.wallet_type = 'credit_card'
+             WHERE w.wallet_type = 'credit_card'
              ORDER BY w.sort_order, w.created_at",
         )?;
         let rows = stmt.query_map([], CreditCard::from_row)?;

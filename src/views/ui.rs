@@ -4,7 +4,7 @@ use crate::i18n::use_i18n;
 use crate::models::{Transaction, TransactionType};
 use crate::views::gestures::{use_swipe, use_swipe_anchor};
 use crate::views::icons::{emoji_icon, icon_for_emoji, Icon, IconName};
-use crate::views::{fmt_currency, iso_to_display, month_label, theme, ts_to_date_str};
+use crate::views::{fmt_currency, fmt_number, iso_to_display, month_label, theme, ts_to_date_str};
 
 /// `#RRGGBB` from a DB color that may carry an alpha suffix (`#RRGGBBAA`)
 fn hex6(color: &str) -> String {
@@ -376,6 +376,8 @@ pub fn TxnItem(
     #[props(default)] from_wallet: Option<String>,
     /// Name of `txn.to_wallet_id` (transfers)
     #[props(default)] to_wallet: Option<String>,
+    /// Stock / coin code of `txn.holding_id` (buy / sell)
+    #[props(default)] holding: Option<String>,
     /// Wallet id the screen is about; sign and color become relative to it
     #[props(default)] perspective: Option<String>,
     /// Prepend the date to the meta line (screens not grouped by day)
@@ -389,7 +391,13 @@ pub fn TxnItem(
     let type_label = t.code(&txn.txn_type.to_string());
     let (title, icon, color) = match category {
         Some((emoji, name, color)) => (name, Some(emoji), color),
-        None => (type_label, None, type_color.to_string()),
+        None => {
+            let title = match holding.as_deref().filter(|c| !c.is_empty()) {
+                Some(code) => format!("{type_label} · {code}"),
+                None => type_label,
+            };
+            (title, None, type_color.to_string())
+        }
     };
 
     let persp = perspective.as_deref();
@@ -432,6 +440,11 @@ pub fn TxnItem(
     let mut parts: Vec<String> = vec![];
     if show_date { parts.push(ts_to_date_str(txn.txn_date)); }
     if let Some(w) = wallet_part(&txn, from_wallet.as_deref(), to_wallet.as_deref(), persp) { parts.push(w); }
+    if matches!(txn.txn_type, TransactionType::InvestBuy | TransactionType::InvestSell) {
+        if let (Some(q), Some(p)) = (txn.asset_quantity, txn.asset_price) {
+            parts.push(format!("{} × {}", fmt_number(q), fmt_number(p)));
+        }
+    }
     if let Some(note) = txn.note.as_deref().filter(|n| !n.is_empty()) { parts.push(note.to_string()); }
     let meta = parts.join(" · ");
     let has_meta = !meta.is_empty() || photos > 0;

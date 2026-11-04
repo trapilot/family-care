@@ -6,7 +6,7 @@ use crate::app::AppState;
 use crate::i18n::use_i18n;
 use crate::models::TransactionType;
 use crate::repository::transaction_repo::{month_bounds, TxnFilter};
-use crate::repository::{CategoryRepo, TransactionRepo, WalletRepo};
+use crate::repository::{CategoryRepo, HoldingRepo, TransactionRepo, WalletRepo};
 use crate::views::ui::{ScreenHeader, TxnItem};
 use crate::views::{fmt_vnd, month_label, theme};
 use super::expense::EmptyState;
@@ -46,7 +46,7 @@ pub fn TypeTransactions(drill: TypeDrill, on_back: EventHandler<()>) -> Element 
     let state = use_context::<AppState>();
 
     // Same bounds as the report sums (`sum_by_type_in_month`), so the total matches
-    let (txns, wallets, categories) = state.with_conn(|conn| {
+    let (txns, wallets, categories, holdings) = state.with_conn(|conn| {
         let filter = TxnFilter {
             txn_type:    Some(drill.txn_type.clone()),
             category_id: drill.category_id.clone(),
@@ -57,7 +57,9 @@ pub fn TypeTransactions(drill: TypeDrill, on_back: EventHandler<()>) -> Element 
         let wallets: HashMap<String, String> = WalletRepo::names(conn).unwrap_or_default();
         let categories: HashMap<String, CategoryLook> = CategoryRepo::list(conn).unwrap_or_default()
             .into_iter().map(|c| (c.id, (t.tr(&c.name), c.icon, c.color))).collect();
-        (TransactionRepo::list(conn, &filter).unwrap_or_default(), wallets, categories)
+        let holdings: HashMap<String, String> = HoldingRepo::list_all(conn).unwrap_or_default()
+            .into_iter().map(|h| (h.id, h.symbol)).collect();
+        (TransactionRepo::list(conn, &filter).unwrap_or_default(), wallets, categories, holdings)
     });
     let total: Decimal = txns.iter().map(|tx| tx.amount).sum();
     let count = txns.len();
@@ -119,6 +121,7 @@ pub fn TypeTransactions(drill: TypeDrill, on_back: EventHandler<()>) -> Element 
                                         )),
                                     from_wallet: wallets.get(&txn.wallet_id).cloned(),
                                     to_wallet: txn.to_wallet_id.as_deref().and_then(|id| wallets.get(id).cloned()),
+                                    holding: txn.holding_id.as_deref().and_then(|id| holdings.get(id).cloned()),
                                     show_date: true,
                                     txn,
                                 }

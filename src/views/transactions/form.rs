@@ -13,10 +13,24 @@ use crate::services::statement::ocr;
 use crate::services::{receipt, ReminderService, TransactionService};
 use crate::views::icons::{Icon, IconName};
 use crate::views::ui::{txn_type_look, DateInput, IconCircle, IconText, ScreenHeader};
-use crate::views::{currency_name, date_str_add, date_str_to_ts, fmt_currency, fmt_vnd, repeat_unit_label, theme, AmountInput};
+use crate::views::{currency_name, date_str_add, date_str_to_ts, fmt_currency, fmt_number, fmt_vnd, repeat_unit_label, theme, AmountInput};
 use crate::models::id_card::jpeg_data_url;
 use crate::views::photo_picker::{use_photo_picker, PhotoInput};
 use super::TxnView;
+
+/// Quantity a sell can use: the holding's quantity, plus the shares of the sell being edited
+fn sell_available(h: &crate::models::Holding, editing: Option<&Transaction>) -> Decimal {
+    let back = editing
+        .filter(|e| e.txn_type == TransactionType::InvestSell && e.holding_id.as_deref() == Some(h.id.as_str()))
+        .and_then(|e| e.asset_quantity)
+        .unwrap_or(Decimal::ZERO);
+    h.quantity + back
+}
+
+/// Whole shares for a stock, exact decimals for crypto
+fn fmt_qty(h: &crate::models::Holding, qty: Decimal) -> String {
+    if h.asset_type == crate::models::AssetType::Stock { fmt_number(qty) } else { qty.normalize().to_string() }
+}
 
 #[component]
 pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> Element {
@@ -69,6 +83,26 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
     let mut holding_id = use_signal(|| editing.as_ref().and_then(|t| t.holding_id.clone()).unwrap_or_default());
     let mut qty_str    = use_signal(|| editing.as_ref().and_then(|t| t.asset_quantity.map(|q| format!("{q}"))).unwrap_or_default());
     let mut price_str  = use_signal(|| editing.as_ref().and_then(|t| t.asset_price.map(|p| format!("{p}"))).unwrap_or_default());
+    // Buy: the holding is typed as a code; editing a buy starts from its holding's code
+    let mut symbol = use_signal({
+        let state = state.clone();
+        let editing = editing.clone();
+        move || editing.as_ref()
+            .filter(|t| t.txn_type == TransactionType::InvestBuy)
+            .and_then(|t| t.holding_id.clone())
+            .and_then(|id| state.with_conn(|conn| HoldingRepo::find_by_id(conn, &id).ok().flatten()))
+            .map(|h| h.symbol)
+            .unwrap_or_default()
+    });
+    // Holding of the edited transaction: stays pickable for a sell even when its quantity is now 0
+    let edit_holding = editing.as_ref().and_then(|t| t.holding_id.clone());
+
+    // Total of a buy / sell = quantity x price per unit
+    let invest_total = use_memo(move || {
+        let q = Decimal::from_str(qty_str.read().trim()).ok();
+        let p = Decimal::from_str(price_str.read().trim()).ok();
+        match (q, p) { (Some(q), Some(p)) => Some(q * p), _ => None }
+    });
 
     // Recurring reminder (new Income / Transfer only): notify, never auto-add
     let mut remind       = use_signal(|| false);
@@ -151,7 +185,7 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
                     card_limits.set(cards.into_iter().map(|c| (c.wallet_id, c.credit_limit)).collect());
                 }
                 if let Ok(cs) = CategoryRepo::list(conn)          { categories.set(cs); }
-                if let Ok(hs) = HoldingRepo::list_all_active(conn) { holdings.set(hs); }
+                if let Ok(hs) = HoldingRepo::list_all(conn) { holdings.set(hs); }
             });
         }
     });
@@ -173,6 +207,7 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
         let holding_id = holding_id.clone();
         let qty_str    = qty_str.clone();
         let price_str  = price_str.clone();
+        let symbol     = symbol.clone();
         let mut error_msg = error_msg.clone();
         let editing = editing.clone();
 
@@ -184,12 +219,16 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
                 error_msg.set(t.t("Choose a wallet").into());
                 return;
             }
-            let amount = match Decimal::from_str(amount_str.read().trim()) {
-                Ok(a) => a,
-                Err(_) => { error_msg.set(t.t("Invalid amount").into()); return; }
-            };
             // Only invest trades derive their cost from qty x price; an opening balance may be 0
             let is_invest = matches!(kind, TransactionType::InvestBuy | TransactionType::InvestSell);
+            let amount = if is_invest {
+                Decimal::ZERO
+            } else {
+                match Decimal::from_str(amount_str.read().trim()) {
+                    Ok(a) => a,
+                    Err(_) => { error_msg.set(t.t("Invalid amount").into()); return; }
+                }
+            };
             let zero_ok = kind == TransactionType::OpeningBalance;
             if !is_invest && (amount < Decimal::ZERO || (amount.is_zero() && !zero_ok)) {
                 error_msg.set(t.t("Amount must be greater than 0").into());
@@ -216,13 +255,37 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
             }
             let (mut qty, mut price) = (Decimal::ZERO, Decimal::ZERO);
             if is_invest {
-                if holding_id.read().is_empty() {
+                if kind == TransactionType::InvestBuy && symbol.read().trim().is_empty() {
+                    error_msg.set(t.t("Enter a code").into());
+                    return;
+                }
+                if kind == TransactionType::InvestSell && holding_id.read().is_empty() {
                     error_msg.set(t.t("Choose a holding").into());
                     return;
                 }
                 match (positive(&qty_str.read()), positive(&price_str.read())) {
                     (Some(q), Some(p)) if q > Decimal::ZERO && p > Decimal::ZERO => { qty = q; price = p; }
                     _ => { error_msg.set(t.t("Quantity and price must be greater than 0").into()); return; }
+                }
+                // Friendly checks; the service stays the real guard
+                let picked = holdings.read().iter().find(|h| h.id == *holding_id.read()).cloned();
+                let is_stock = if kind == TransactionType::InvestBuy {
+                    !symbol.read().contains('-')
+                } else {
+                    picked.as_ref().is_some_and(|h| h.asset_type == crate::models::AssetType::Stock)
+                };
+                if is_stock && qty.fract() != Decimal::ZERO {
+                    error_msg.set(t.t("Stock quantity must be a whole number").into());
+                    return;
+                }
+                if kind == TransactionType::InvestSell {
+                    if let Some(h) = picked {
+                        let available = sell_available(&h, editing.as_ref());
+                        if qty > available {
+                            error_msg.set(format!("{}: {}", t.t("Not enough quantity, you hold"), fmt_qty(&h, available)));
+                            return;
+                        }
+                    }
                 }
             }
             let Some(date_ts) = date_str_to_ts(&txn_date.read()) else {
@@ -265,7 +328,8 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
                     )
                 }
                 TransactionType::InvestBuy => {
-                    NewTransaction::invest_buy(&wallet_id.read(), &holding_id.read(), qty, price, currency.read().clone(), date_ts)
+                    // The holding id is filled in by the service from the typed code
+                    NewTransaction::invest_buy(&wallet_id.read(), "", qty, price, currency.read().clone(), date_ts)
                 }
                 TransactionType::InvestSell => {
                     NewTransaction::invest_sell(&wallet_id.read(), &holding_id.read(), qty, price, currency.read().clone(), date_ts)
@@ -303,12 +367,12 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
 
             let result = state.with_conn(|conn| -> crate::error::Result<()> {
                 // Delete-old + insert-new + photos commit or roll back together
-                TransactionService::execute_with_photos(
-                    conn,
-                    editing.as_ref().map(|old| old.id.as_str()),
-                    &new_txn,
-                    &photos.read(),
-                )?;
+                let old_id = editing.as_ref().map(|old| old.id.as_str());
+                if kind == TransactionType::InvestBuy {
+                    TransactionService::execute_buy_by_symbol(conn, old_id, &new_txn, &symbol.read(), &photos.read())?;
+                } else {
+                    TransactionService::execute_with_photos(conn, old_id, &new_txn, &photos.read())?;
+                }
                 if let Some(ref reminder) = reminder {
                     ReminderRepo::create(conn, reminder)?;
                     ReminderService::resync(conn)?;
@@ -323,6 +387,7 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
         }
     };
 
+    let is_invest_type = matches!(*txn_type.read(), TransactionType::InvestBuy | TransactionType::InvestSell);
     let title = if editing.is_some() { t.t("Edit Transaction") } else { t.t("New Transaction") };
 
     rsx! {
@@ -373,7 +438,14 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
                 div { style: "flex:1; min-width:0;",
                     SelectField {
                         value: wallet_id.read().clone(),
-                        onchange: move |v: String| { wallet_id.set(v); },
+                        onchange: move |v: String| {
+                            // A holding belongs to one wallet: drop the pick when the wallet changes
+                            let other_wallet = holdings.read().iter()
+                                .find(|h| h.id == *holding_id.read())
+                                .is_some_and(|h| h.wallet_id != v);
+                            if other_wallet { holding_id.set(String::new()); }
+                            wallet_id.set(v);
+                        },
                         placeholder: t.t("Select wallet"),
                         options: wallets.read().iter().map(|w| (w.id.clone(), w.name.clone())).collect()
                     }
@@ -472,16 +544,51 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
 
                 TransactionType::InvestBuy | TransactionType::InvestSell => rsx! {
                     FieldLabel { label: t.t("Holding") }
-                    SelectField {
-                        value: holding_id.read().clone(),
-                        onchange: move |v| { holding_id.set(v); },
-                        placeholder: t.t("Select symbol"),
-                        options: holdings.read().iter().map(|h| (h.id.clone(), format!("{} ({})", h.symbol, h.asset_type))).collect()
+                    if *txn_type.read() == TransactionType::InvestBuy {
+                        input {
+                            style: "{theme::INPUT}",
+                            r#type: "text",
+                            autocapitalize: "characters",
+                            placeholder: t.t("Full Yahoo code, e.g. VNM.VN, BTC-USD, AAPL"),
+                            value: "{symbol.read()}",
+                            oninput: move |e| { symbol.set(e.value().to_uppercase()); },
+                        }
+                    } else {
+                        {
+                            let options: Vec<(String, String)> = holdings.read().iter()
+                                .filter(|h| h.wallet_id == *wallet_id.read()
+                                    && (h.quantity > Decimal::ZERO || Some(&h.id) == edit_holding.as_ref()))
+                                .map(|h| (h.id.clone(), format!("{} ({}) · {}", h.symbol, h.asset_type, fmt_number(h.quantity))))
+                                .collect();
+                            let empty = options.is_empty();
+                            rsx! {
+                                SelectField {
+                                    value: holding_id.read().clone(),
+                                    onchange: move |v| { holding_id.set(v); },
+                                    placeholder: t.t("Select symbol"),
+                                    options,
+                                }
+                                if empty {
+                                    div {
+                                        style: "font-size:12px; color:{theme::TEXT_MUTED};",
+                                        {t.t("No holdings in this wallet")}
+                                    }
+                                }
+                            }
+                        }
                     }
                     FieldLabel { label: t.t("Quantity") }
                     AmountInput {
                         value: qty_str.read().clone(),
                         oninput: move |v| qty_str.set(v),
+                    }
+                    if *txn_type.read() == TransactionType::InvestSell {
+                        if let Some(h) = holdings.read().iter().find(|h| h.id == *holding_id.read()) {
+                            div {
+                                style: "font-size:12px; color:{theme::TEXT_MUTED};",
+                                "{t.t(\"Available\")}: {fmt_qty(h, sell_available(h, editing.as_ref()))}"
+                            }
+                        }
                     }
                     FieldLabel { label: t.t("Price per unit") }
                     AmountInput {
@@ -496,13 +603,20 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
             DateInput { value: txn_date.read().clone(), oninput: move |v: String| txn_date.set(v) }
 
             // ── Amount + currency ──
-            FieldLabel { label: t.t("Amount") }
+            FieldLabel { label: if is_invest_type { t.t("Total") } else { t.t("Amount") } }
             div {
                 style: "display:flex; gap:8px;",
-                AmountInput {
-                    value: amount_str.read().clone(),
-                    oninput: move |v| { amount_str.set(v); },
-                    style: AMOUNT_WITH_CURRENCY_STYLE.to_string(),
+                if is_invest_type {
+                    div {
+                        style: "{AMOUNT_WITH_CURRENCY_STYLE} background:#f5f6fa;",
+                        {invest_total().map(|v| fmt_currency(v, &currency())).unwrap_or_else(|| "0".to_string())}
+                    }
+                } else {
+                    AmountInput {
+                        value: amount_str.read().clone(),
+                        oninput: move |v| { amount_str.set(v); },
+                        style: AMOUNT_WITH_CURRENCY_STYLE.to_string(),
+                    }
                 }
                 CurrencySelect {
                     value: currency(),
@@ -519,7 +633,7 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
                     {t.t("Reading amount from photo…")}
                 }
             }
-            if !candidates().is_empty() {
+            if !is_invest_type && !candidates().is_empty() {
                 div {
                     style: "display:flex; flex-wrap:wrap; gap:6px; align-items:center;",
                     span {
@@ -542,7 +656,7 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
                         }
                     }
                 }
-            } else if scanning() == 0 && scanned_attached() {
+            } else if !is_invest_type && scanning() == 0 && scanned_attached() {
                 div {
                     style: "font-size:12px; color:{theme::TEXT_MUTED};",
                     {t.t("No numbers found in the photo")}

@@ -2,10 +2,10 @@ use dioxus::prelude::*;
 use crate::i18n::use_i18n;
 use rust_decimal::Decimal;
 
-use crate::app::{AppState, SelectedMonth};
+use crate::app::{AppState, SelectedMonth, TxnTypeFilter};
 use crate::models::{Currency, Transaction, TransactionType};
 use crate::repository::transaction_repo::{month_bounds, TxnFilter};
-use crate::repository::{CategoryRepo, TransactionRepo, TxnImageRepo, WalletRepo};
+use crate::repository::{CategoryRepo, HoldingRepo, TransactionRepo, TxnImageRepo, WalletRepo};
 use crate::services::TransactionService;
 use crate::views::icons::IconName;
 use crate::views::ui::{AppHeader, Fab, HeaderAction, TxnItem};
@@ -20,12 +20,9 @@ pub fn TransactionList(view: Signal<TxnView>) -> Element {
     let SelectedMonth(mut selected) = use_context::<SelectedMonth>();
 
     let txns        = use_signal(|| vec![]);
-    // Types shown; toggled by the chips (at least one stays selected)
-    let mut filter_types = use_signal(|| vec![
-        TransactionType::Income,
-        TransactionType::Expense,
-        TransactionType::Transfer,
-    ]);
+    // Types shown; toggled by the chips (at least one stays selected). App-level, so the
+    // choice survives switching tabs until the app is closed
+    let TxnTypeFilter(mut filter_types) = use_context::<TxnTypeFilter>();
     let mut search_note = use_signal(|| String::new());
     let mut show_search = use_signal(|| false);
     let mut show_confirm_delete = use_signal(|| None::<String>); // holds txn id
@@ -54,6 +51,24 @@ pub fn TransactionList(view: Signal<TxnView>) -> Element {
         let state = state.clone();
         move || -> HashMap<String, String> {
             state.with_conn(|conn| WalletRepo::names(conn).unwrap_or_default())
+        }
+    });
+
+    // Disabled wallets: their transactions can't be edited or deleted
+    let disabled_wallets = use_signal({
+        let state = state.clone();
+        move || -> std::collections::HashSet<String> {
+            state.with_conn(|conn| WalletRepo::list_all(conn).unwrap_or_default())
+                .into_iter().filter(|w| !w.is_active).map(|w| w.id).collect()
+        }
+    });
+
+    // holding id → symbol for buy / sell rows and search
+    let holding_symbols = use_signal({
+        let state = state.clone();
+        move || -> HashMap<String, String> {
+            state.with_conn(|conn| HoldingRepo::list_all(conn).unwrap_or_default())
+                .into_iter().map(|h| (h.id, h.symbol)).collect()
         }
     });
 
@@ -88,10 +103,18 @@ pub fn TransactionList(view: Signal<TxnView>) -> Element {
 
     // Search filter in memory
     let query = search_note.read().to_lowercase();
+    let is_locked = |txn: &Transaction| {
+        let off = disabled_wallets.read();
+        off.contains(&txn.wallet_id) || txn.to_wallet_id.as_ref().is_some_and(|id| off.contains(id))
+    };
+
     let visible: Vec<Transaction> = txns.read().iter()
         .filter(|t| {
             if query.is_empty() { return true; }
-            t.note.as_deref().unwrap_or("").to_lowercase().contains(&query)
+            if t.note.as_deref().unwrap_or("").to_lowercase().contains(&query) { return true; }
+            t.holding_id.as_deref()
+                .and_then(|id| holding_symbols.read().get(id).cloned())
+                .is_some_and(|s| s.to_lowercase().contains(&query))
         })
         .cloned()
         .collect();
@@ -150,28 +173,39 @@ pub fn TransactionList(view: Signal<TxnView>) -> Element {
                 // ── Type Filter (multi-select) ──
                 div {
                     style: "display:flex; gap:6px; overflow-x:auto; padding-bottom:4px;",
-                    for (tt, label) in [
-                        (TransactionType::Income,    t.t("Income")),
-                        (TransactionType::Expense,   t.t("Expense")),
-                        (TransactionType::Transfer,  t.t("Transfer")),
-                        (TransactionType::InvestBuy, t.t("Buy")),
-                        (TransactionType::InvestSell,t.t("Sell")),
-                        (TransactionType::OpeningBalance, t.t("Opening Balance")),
+                    for (chip_types, label) in [
+                        (vec![TransactionType::Income],   t.t("Income")),
+                        (vec![TransactionType::Expense],  t.t("Expense")),
+                        (vec![TransactionType::Transfer], t.t("Transfer")),
+                        // Buy and sell share one chip
+                        (vec![TransactionType::InvestBuy, TransactionType::InvestSell], t.t("Invest")),
+                        (vec![TransactionType::OpeningBalance], t.t("Opening Balance")),
                     ] {
                         {
-                            let tt_clone = tt.clone();
+                            let active = {
+                                let current = filter_types.read();
+                                chip_types.iter().all(|x| current.contains(x))
+                            };
                             rsx! {
                                 FilterChip {
                                     label,
-                                    active: filter_types.read().contains(&tt),
+                                    active,
                                     onclick: move |_| {
                                         // The load effect reads the chips, so it re-runs on change
                                         let mut types = filter_types.write();
-                                        if let Some(pos) = types.iter().position(|x| *x == tt_clone) {
+                                        let is_active = chip_types.iter().all(|x| types.contains(x));
+                                        if is_active {
                                             // Keep at least one type selected
-                                            if types.len() > 1 { types.remove(pos); }
+                                            let remaining = types.iter().filter(|x| !chip_types.contains(x)).count();
+                                            if remaining > 0 {
+                                                types.retain(|x| !chip_types.contains(x));
+                                            }
                                         } else {
-                                            types.push(tt_clone.clone());
+                                            for ct in chip_types.iter() {
+                                                if !types.contains(ct) {
+                                                    types.push(ct.clone());
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -217,15 +251,16 @@ pub fn TransactionList(view: Signal<TxnView>) -> Element {
                                             .map(|(icon, name, color)| (icon, t.tr(&name), color)),
                                         from_wallet: wallet_names.read().get(&txn.wallet_id).cloned(),
                                         to_wallet: txn.to_wallet_id.as_deref().and_then(|id| wallet_names.read().get(id).cloned()),
+                                        holding: txn.holding_id.as_deref().and_then(|id| holding_symbols.read().get(id).cloned()),
                                         txn: txn.clone(),
-                                        on_edit: {
+                                        on_edit: (!is_locked(txn)).then(|| {
                                             let txn = txn.clone();
                                             EventHandler::new(move |_| { view.set(TxnView::Edit(txn.clone())); })
-                                        },
-                                        on_delete: {
+                                        }),
+                                        on_delete: (!is_locked(txn)).then(|| {
                                             let id = txn.id.clone();
                                             EventHandler::new(move |_| { show_confirm_delete.set(Some(id.clone())); })
-                                        },
+                                        }),
                                     }
                                 }
                             }

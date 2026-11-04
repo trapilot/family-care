@@ -32,6 +32,12 @@ pub fn fmt_vnd(amount: rust_decimal::Decimal) -> String {
     format!("{s} {unit}")
 }
 
+/// Plain number rounded to an integer with thousands separators — e.g. 1.500 (stock quantity, prices)
+pub fn fmt_number(n: rust_decimal::Decimal) -> String {
+    use rust_decimal::prelude::ToPrimitive;
+    format_thousands(n.round().to_i64().unwrap_or(0))
+}
+
 /// Format USD
 pub fn fmt_usd(amount: rust_decimal::Decimal) -> String {
     use rust_decimal::prelude::ToPrimitive;

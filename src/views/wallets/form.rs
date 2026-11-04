@@ -60,6 +60,9 @@ pub fn WalletForm(view: Signal<WalletView>, editing: Option<Wallet>) -> Element 
         move || editing.as_ref().is_some_and(|w| state.with_conn(|conn| WalletRepo::can_delete(conn, &w.id).unwrap_or(false)))
     });
     let mut confirm_delete = use_signal(|| false);
+    let mut confirm_disable = use_signal(|| false);
+    // A disabled wallet can only be enabled again (or deleted when unused)
+    let disabled_edit = editing.as_ref().is_some_and(|w| !w.is_active);
 
     let title = if editing.is_some() { t.t("Edit Wallet") } else { t.t("New Wallet") };
 
@@ -197,6 +200,28 @@ pub fn WalletForm(view: Signal<WalletView>, editing: Option<Wallet>) -> Element 
         div {
             style: "padding:16px; display:flex; flex-direction:column; gap:16px;",
 
+            if disabled_edit {
+                div {
+                    style: "{theme::CARD} font-size:14px; color:{theme::TEXT_MUTED}; line-height:1.5;",
+                    {t.t("This wallet is disabled. Enable it to make changes.")}
+                }
+                if let Some(w) = editing.clone() {
+                    button {
+                        style: "{theme::BTN_PRIMARY} width:100%;",
+                        onclick: {
+                            let state = state.clone();
+                            let mut error_msg = error_msg.clone();
+                            move |_| {
+                                match state.with_conn(|conn| WalletRepo::set_active(conn, &w.id, true)) {
+                                    Ok(())  => view.set(WalletView::List),
+                                    Err(e)  => error_msg.set(e.to_string()),
+                                }
+                            }
+                        },
+                        {t.t("Enable wallet")}
+                    }
+                }
+            } else {
             // ── Type (first option = default for a new wallet) ──
             FieldLabel { label: t.t("Type") }
             div {
@@ -319,6 +344,8 @@ pub fn WalletForm(view: Signal<WalletView>, editing: Option<Wallet>) -> Element 
                 },
             }
 
+            }
+
             // ── Error ──
             if !error_msg.read().is_empty() {
                 div {
@@ -328,14 +355,60 @@ pub fn WalletForm(view: Signal<WalletView>, editing: Option<Wallet>) -> Element 
             }
 
             // ── Submit ──
-            button {
-                style: "{theme::BTN_PRIMARY} width:100%; margin-top:4px;",
-                onclick: submit,
-                if editing.is_some() { {t.t("Update Wallet")} } else { {t.t("Create Wallet")} }
+            if !disabled_edit {
+                button {
+                    style: "{theme::BTN_PRIMARY} width:100%; margin-top:4px;",
+                    onclick: submit,
+                    if editing.is_some() { {t.t("Update Wallet")} } else { {t.t("Create Wallet")} }
+                }
+            }
+
+            // ── Disable (active wallets being edited) ──
+            if editing.is_some() && !disabled_edit {
+                button {
+                    style: "{theme::BTN_SECONDARY} width:100%;",
+                    onclick: move |_| confirm_disable.set(true),
+                    {t.t("Disable wallet")}
+                }
+                if confirm_disable() {
+                    div {
+                        style: "{theme::OVERLAY}",
+                        div {
+                            style: "{theme::DIALOG}",
+                            h3 { style: "margin:0 0 8px; font-size:16px; font-weight:600; color:{theme::TEXT};", {t.t("Disable wallet")} }
+                            p { style: "margin:0 0 18px; font-size:14px; color:{theme::TEXT_MUTED}; line-height:1.5;",
+                                {t.t("Disable this wallet? Its data is kept, but it is hidden from pickers and no transactions can be added, edited or deleted for it until you enable it again.")}
+                            }
+                            div { style: "display:flex; gap:10px;",
+                                button {
+                                    style: "{theme::BTN_SECONDARY} flex:1;",
+                                    onclick: move |_| confirm_disable.set(false),
+                                    {t.t("Cancel")}
+                                }
+                                button {
+                                    style: "{theme::BTN_PRIMARY} flex:1;",
+                                    onclick: {
+                                        let state = state.clone();
+                                        let mut error_msg = error_msg.clone();
+                                        let id = editing.as_ref().map(|w| w.id.clone()).unwrap_or_default();
+                                        move |_| {
+                                            confirm_disable.set(false);
+                                            match state.with_conn(|conn| WalletRepo::set_active(conn, &id, false)) {
+                                                Ok(())  => view.set(WalletView::List),
+                                                Err(e)  => error_msg.set(e.to_string()),
+                                            }
+                                        }
+                                    },
+                                    {t.t("Disable wallet")}
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             // ── Delete (unused wallets only) ──
-            if let Some(wallet) = editing.clone() {
+            if let Some(wallet) = editing.clone().filter(|w| w.is_active) {
                 if can_delete() {
                     button {
                         style: "{theme::BTN_DANGER} width:100%;",

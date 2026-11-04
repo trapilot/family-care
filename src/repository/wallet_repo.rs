@@ -124,13 +124,17 @@ impl WalletRepo {
 
     /// Atomic balance delta in one money type — used exclusively by TransactionService
     pub fn add_balance(conn: &Connection, wallet_id: &str, currency: &Currency, delta_f64: f64) -> Result<()> {
-        let exists: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM wallets WHERE id = ?1 AND is_active = 1",
-            [wallet_id],
-            |row| row.get(0),
-        )?;
-        if exists == 0 {
-            return Err(AppError::NotFound(format!("wallet '{wallet_id}'")));
+        let found: Option<(String, i64)> = conn
+            .query_row(
+                "SELECT name, is_active FROM wallets WHERE id = ?1",
+                [wallet_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+        match found {
+            None => return Err(AppError::NotFound(format!("wallet '{wallet_id}'"))),
+            Some((name, 0)) => return Err(AppError::Validation(format!("Wallet '{name}' is disabled"))),
+            Some(_) => {}
         }
         conn.execute(
             "INSERT INTO wallet_balances (wallet_id, currency, balance) VALUES (?1, ?2, ?3)
@@ -150,6 +154,15 @@ impl WalletRepo {
             )
             .optional()?;
         Ok(balance.map(f64_to_decimal).unwrap_or(Decimal::ZERO))
+    }
+
+    /// Enable or disable a wallet (a disabled wallet accepts no transactions)
+    pub fn set_active(conn: &Connection, id: &str, active: bool) -> Result<()> {
+        conn.execute(
+            "UPDATE wallets SET is_active = ?1 WHERE id = ?2",
+            rusqlite::params![active as i32, id],
+        )?;
+        Ok(())
     }
 
     pub fn soft_delete(conn: &Connection, id: &str) -> Result<()> {

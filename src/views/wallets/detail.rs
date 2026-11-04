@@ -4,7 +4,7 @@ use crate::i18n::use_i18n;
 use crate::app::AppState;
 use crate::models::{Transaction, Wallet, WalletType};
 use crate::repository::transaction_repo::TxnFilter;
-use crate::repository::{CategoryRepo, CreditCardRepo, TransactionRepo, WalletRepo};
+use crate::repository::{CategoryRepo, CreditCardRepo, HoldingRepo, TransactionRepo, WalletRepo};
 use crate::services::CreditCardService;
 use crate::views::ui::{ScreenHeader, TxnItem, UnderlineTabs};
 use crate::views::{fmt_currency, fmt_date, fmt_vnd, theme};
@@ -80,8 +80,15 @@ pub fn WalletDetail(view: Signal<WalletView>, wallet: Wallet) -> Element {
                 }
             }
 
+            if !wallet.is_active {
+                div {
+                    style: "padding:8px 16px 0; font-size:12px; color:{theme::TEXT_MUTED};",
+                    {t.t("This wallet is disabled")}
+                }
+            }
+
             if wallet.wallet_type == WalletType::CreditCard {
-                CardStatement { wallet_id: wallet.id.clone() }
+                CardStatement { wallet_id: wallet.id.clone(), readonly: !wallet.is_active }
             }
 
             // ── Tabs (investment wallet shows Holdings tab) ──
@@ -103,7 +110,7 @@ pub fn WalletDetail(view: Signal<WalletView>, wallet: Wallet) -> Element {
                 style: "flex:1; overflow-y:auto; padding:16px;",
                 match sub_view.read().clone() {
                     DetailTab::History  => rsx! { TxnHistory { wallet_id: wallet.id.clone(), txns: txns.read().clone() } },
-                    DetailTab::Holdings => rsx! { HoldingsView { wallet_id: wallet.id.clone() } },
+                    DetailTab::Holdings => rsx! { HoldingsView { wallet_id: wallet.id.clone(), readonly: !wallet.is_active } },
                 }
             }
         }
@@ -123,6 +130,9 @@ fn TxnHistory(wallet_id: String, txns: Vec<Transaction>) -> Element {
     let state = use_context::<AppState>();
     let wallets: HashMap<String, String> = state
         .with_conn(|conn| WalletRepo::names(conn).unwrap_or_default());
+    let holdings: HashMap<String, String> = state
+        .with_conn(|conn| HoldingRepo::list_all(conn).unwrap_or_default())
+        .into_iter().map(|h| (h.id, h.symbol)).collect();
     let categories: HashMap<String, (String, String, String)> = state
         .with_conn(|conn| CategoryRepo::list(conn).unwrap_or_default())
         .into_iter()
@@ -149,6 +159,7 @@ fn TxnHistory(wallet_id: String, txns: Vec<Transaction>) -> Element {
                         category: txn.category_id.as_deref().and_then(|id| categories.get(id).cloned()),
                         from_wallet: wallets.get(&txn.wallet_id).cloned(),
                         to_wallet: txn.to_wallet_id.as_deref().and_then(|id| wallets.get(id).cloned()),
+                        holding: txn.holding_id.as_deref().and_then(|id| holdings.get(id).cloned()),
                         perspective: Some(wallet_id.clone()),
                         show_date: true,
                         txn: txn.clone(),
@@ -170,7 +181,7 @@ fn load_card(state: &AppState, wallet_id: &str, today: NaiveDate) -> Option<(Cre
 }
 
 #[component]
-fn CardStatement(wallet_id: String) -> Element {
+fn CardStatement(wallet_id: String, #[props(default = false)] readonly: bool) -> Element {
     let t = use_i18n();
     let state = use_context::<AppState>();
     let today = Local::now().date_naive();
@@ -229,7 +240,7 @@ fn CardStatement(wallet_id: String) -> Element {
                     div {
                         style: "display:flex; align-items:center; justify-content:space-between; margin-top:4px;",
                         span { style: "color:{theme::POSITIVE}; font-weight:600; font-size:14px;", "✓ {t.t(\"Paid\")}" }
-                        button {
+                        if !readonly { button {
                             style: "border:none; background:transparent; color:{theme::TEXT_MUTED}; font-size:13px; cursor:pointer; padding:4px 8px;",
                             onclick: {
                                 let (state, id) = (state.clone(), wallet_id.clone());
@@ -239,9 +250,9 @@ fn CardStatement(wallet_id: String) -> Element {
                                 }
                             },
                             {t.t("Undo")}
-                        }
+                        } }
                     }
-                } else if s.statement_balance > Decimal::ZERO {
+                } else if s.statement_balance > Decimal::ZERO && !readonly {
                     button {
                         style: "{theme::BTN_PRIMARY} margin-top:4px;",
                         onclick: {
