@@ -154,11 +154,11 @@ fn DonateCard() -> Element {
             div {
                 style: "display:flex; align-items:center; gap:8px; font-weight:700; font-size:16px; color:{theme::TEXT};",
                 Icon { name: IconName::Heart, size: 20, color: "#e5527f".to_string() }
-                "{t.t(\"Support Family Money\")}"
+                "{t.t(\"Support TaGi\")}"
             }
             div {
                 style: "font-size:14px; color:{theme::TEXT_MUTED};",
-                "{t.t(\"Family Money is free and has no ads. If it helps your family, you can buy the author a coffee — scan the QR with any banking app.\")}"
+                "{t.t(\"TaGi is free and has no ads. If it helps your family, you can buy the author a coffee — scan the QR with any banking app.\")}"
             }
             button {
                 style: "{theme::BTN_SECONDARY} width:100%;",

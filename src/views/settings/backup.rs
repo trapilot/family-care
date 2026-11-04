@@ -370,7 +370,7 @@ pub fn BackupSettings() -> Element {
             div {
                 style: "background:#fff; border-radius:0; padding:16px;",
                 div { style: "font-size:12px; color:{theme::TEXT_MUTED}; margin-bottom:4px;", "APP" }
-                div { style: "font-size:15px; font-weight:600; color:{theme::TEXT};", "Family Money" }
+                div { style: "font-size:15px; font-weight:600; color:{theme::TEXT};", "TaGi" }
                 div { style: "font-size:13px; color:{theme::TEXT_MUTED}; margin-top:2px;", {t.t("Version {version} · SQLite local storage").replace("{version}", &app_version.read())} }
             }
 

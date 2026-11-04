@@ -1,9 +1,13 @@
 [application]
 
+# Unique app id (Android applicationId / iOS bundle id). Changing it makes a new app on the device.
+[bundle]
+identifier = "vn.namdwb.tagi"
+
 [web.app]
 
 # HTML title tag content
-title = "Family Money"
+title = "TaGi"
 
 # include `assets` in web platform
 [web.resource]

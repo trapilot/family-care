@@ -1,4 +1,4 @@
-# Family Money
+# TaGi
 
 A local-first personal and family money management app built with Rust, Dioxus, and SQLite.
 

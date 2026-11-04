@@ -27,6 +27,8 @@ case "${1:-release}" in
 esac
 
 OUT_DIR="${OUT_DIR:-$PWD}"
+# Name shown under the app icon
+APP_NAME="TaGi"
 mkdir -p "$OUT_DIR"
 
 if [[ "$PLATFORM" == "android" ]]; then
@@ -46,6 +48,8 @@ if [[ "$PLATFORM" == "android" ]]; then
   GRADLE_DIR="target/dx/family-money/$MODE/android/app"
   RES_DIR="$GRADLE_DIR/app/src/main/res"
   cp -R android/launcher-icon/. "$RES_DIR/"
+  # Launcher label: dx derives "FamilyMoney" from the crate name; the app id comes from Dioxus.toml [bundle]
+  sed -i '' 's|<string name="app_name">[^<]*</string>|<string name="app_name">'"$APP_NAME"'</string>|' "$RES_DIR/values/strings.xml"
   if [[ "$MODE" == "release" ]] && grep -q '^\[bundle.android\]' Dioxus.toml; then
     GRADLE_TASK="assembleRelease"
   else
@@ -91,6 +95,8 @@ else
     --output-format human-readable-text >/dev/null
   # Merge the generated CFBundleIcons / CFBundleIcons~ipad keys into the app's Info.plist
   /usr/libexec/PlistBuddy -c "Merge $ICON_PLIST" "$APP/Info.plist"
+  # Home-screen name (dx derives "FamilyMoney" from the crate name)
+  /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName $APP_NAME" "$APP/Info.plist"
   rm -f "$ICON_TMP" "$ICON_PLIST"
   DEST="$OUT_DIR/family-money-$MODE.app"
   rm -rf "$DEST"
