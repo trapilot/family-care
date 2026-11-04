@@ -5,22 +5,6 @@ A local-first personal and family money management app built with Rust, Dioxus, 
 The application is designed for users who want full control over their financial data without relying on cloud services. All data is stored locally and can be backed up using a portable `.bk` file.
 
 ---
-# AI AGENTS CODING
-## Background jobs
-- NEVER poll a backgrounded job (sleep / ps / pgrep / top / repeated output checks).
-  Do other useful work, or end your turn — you will be notified with its output when it finishes.
-
-## Model routing: Opus 5.5 thinks, Sonnet 5.5 codes
-Split every non-trivial task by phase and run each phase on the right model:
-- **Reasoning & planning -> Opus 5.5** (`claude-opus-5-5`, alias `opus`): understanding the request, reading context/conventions, investigating the codebase, root-cause analysis, choosing the design/approach, writing the implementation plan, and reviewing/verifying the result. The main session stays on Opus for these.
-- **Coding -> Sonnet 5.5** (`claude-sonnet-5-5`, alias `sonnet`): once the plan is concrete (files, touch points, expected behaviour), hand the mechanical implementation (writing/editing code, tests, docs) to a subagent launched with `model: sonnet` (Agent/Task tool). Give it a complete brief: goal, exact files, change spec, project rules, constraints, and the verification commands to run.
-- **Escalate back to Opus 5.5 when things get complex**: if the Sonnet step hits a non-obvious bug, a failing test it cannot explain after ~2 attempts, a design question the plan did not cover, concurrency/security/performance-sensitive code, or a change spanning many modules - stop delegating, switch back to Opus (main session, or a subagent with `model: opus`) to analyse and re-plan, then resume Sonnet for the remaining mechanical work.
-- **Reasonix tier (cheapest)**: simple/repetitive mechanical work and token-heavy data gathering go to Reasonix per the Reasonix section above - Opus still writes the brief and verifies the result.
-- Tiny one-off changes (a few lines) or Q&A: stay on Opus, no delegation needed.
-- After any Sonnet step, Opus reviews the diff and runs the real checks before reporting - never trust the subagent's own claim.
-- In the final report, state in one line which parts ran on Opus vs Sonnet and whether an escalation happened.
-
----
 
 ## Features
 
@@ -53,7 +37,7 @@ Supported currencies:
 | -------- | ------------------- |
 | VND      | Vietnamese Dong     |
 | USD      | US Dollar           |
-| GOLD     | Chỉ (1 chỉ = 3.75g) |
+| GOLD     | Chỉ Vàng            |
 
 Cross-currency transfers require manual input of the received amount.
 
@@ -67,29 +51,50 @@ Example:
 
 ## Technology Stack
 
+### App & UI
+
+* **Rust** (edition 2021) + **Dioxus 0.7** mobile renderer (WebView-based) for iOS and Android
+* Built with the Dioxus CLI (`dx` 0.7); `./build.sh` adds the launcher name, app icons and output files
+* App id `vn.namdwb.tagi` (`Dioxus.toml` `[bundle]`)
+* Icons from [Lucide](https://lucide.dev) (inline SVG), font *Be Vietnam Pro*
+* Built-in English / Vietnamese translations (`src/i18n.rs`)
+
+### Data & logic
+
+* **SQLite** via `rusqlite` (bundled), local-first and fully offline; schema migrations in `src/db/migrations.rs`
+* Money math with `rust_decimal`; dates with `chrono` / `time`; ids with `uuid`
+* PIN hashing with `bcrypt`
+* JSON backup / restore with `serde` + `serde_json` (images embedded as `base64`)
+* Bank statement parsing with `regex`
+* Exchange rates fetched with `reqwest` (rustls, no OpenSSL) + `tokio`
+
+### Native integrations
+
+| Feature | iOS | Android |
+| --- | --- | --- |
+| Statement photo OCR | Apple Vision (`objc2-vision`) | Google ML Kit Text Recognition |
+| Camera capture | System picker | Kotlin module `android/camera-capture` (FileProvider, EXIF) |
+| Share backup files | `UIActivityViewController` (`objc2-ui-kit`) | Android share sheet |
+| Reminder / bill notifications | `UserNotifications` (`objc2-user-notifications`) | Not yet |
+
+### Main dependencies
+
 ```toml
-dioxus        = { version = "0.7", features = ["mobile"] }
+dioxus        = { version = "0.7.10", features = ["mobile"] }
 rusqlite      = { version = "0.31", features = ["bundled"] }
 serde         = { version = "1", features = ["derive"] }
 serde_json    = "1"
 uuid          = { version = "1", features = ["v4"] }
 chrono        = { version = "0.4", features = ["serde"] }
 rust_decimal  = { version = "1", features = ["serde-float"] }
-once_cell     = "1"
+bcrypt        = "0.15"
+reqwest       = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+tokio         = { version = "1", features = ["time", "sync"] }
+regex         = "1"
+base64        = "0.22"
 ```
 
-### Frontend
-
-* Dioxus 0.7
-* Mobile renderer (WebView-based)
-* Cross-platform UI
-
-### Backend
-
-* Rust
-* SQLite
-* Local-first architecture
-* Offline operation
+See `Cargo.toml` for the full list, including the platform-specific `objc2-*` crates.
 
 ---
 
