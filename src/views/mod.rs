@@ -11,6 +11,10 @@ pub mod photo_picker;
 pub mod theme;
 pub mod icons;
 pub mod ui;
+pub mod gestures;
+pub mod native;
+pub mod share;
+pub mod clipboard;
 
 use dioxus::prelude::*;
 

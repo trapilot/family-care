@@ -18,19 +18,19 @@ pub fn MemberDetail(view: Signal<MemberView>, member: Member) -> Element {
     let mut confirm_delete = use_signal(|| false);
     let mut copied_field   = use_signal(|| None::<&'static str>);
 
-    // Helper: copy text to clipboard via JS eval in WebView
+    let mut share_error    = use_signal(|| None::<String>);
+
+    // Helper: copy text to the clipboard; the "Copied" badge stays until another field is copied
     let copy = move |text: String, field: &'static str| {
-        let js = format!("navigator.clipboard.writeText('{text}').catch(()=>{{}})");
-        let _ = dioxus::document::eval(&js);
-        copied_field.set(Some(field));
-        // Clear "Copied!" badge after 1.5s
         spawn(async move {
-            // tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
-            copied_field.set(None);
+            if crate::views::clipboard::copy_to_clipboard(&text).await {
+                copied_field.set(Some(field));
+            }
         });
     };
-    
+
     let member_editable = member.clone();
+    let member_shared = member.clone();
 
     rsx! {
         div {
@@ -42,6 +42,16 @@ pub fn MemberDetail(view: Signal<MemberView>, member: Member) -> Element {
                 on_back: move |_| { view.set(MemberView::List); },
                 action: rsx! {
                     HeaderAction {
+                        icon: IconName::Share,
+                        label: t.t("Share contact"),
+                        onclick: move |_| {
+                            let result = super::vcard::write_member_vcard(&member_shared)
+                                .map_err(crate::error::AppError::from)
+                                .and_then(|path| crate::views::share::share_file(&path, "text/x-vcard", t.t("Share contact")));
+                            share_error.set(result.err().map(|e| e.to_string()));
+                        },
+                    }
+                    HeaderAction {
                         icon: IconName::Pencil,
                         label: t.t("Edit"),
                         onclick: move |_| { view.set(MemberView::Edit(member_editable.clone())); },
@@ -52,6 +62,10 @@ pub fn MemberDetail(view: Signal<MemberView>, member: Member) -> Element {
                         onclick: move |_| { confirm_delete.set(true); },
                     }
                 },
+            }
+
+            if let Some(err) = share_error.read().as_ref() {
+                div { style: "padding:8px 16px; font-size:13px; color:{theme::NEGATIVE};", "{err}" }
             }
 
             div {
@@ -92,6 +106,7 @@ pub fn MemberDetail(view: Signal<MemberView>, member: Member) -> Element {
                     if let Some(ref phone) = member.phone {
                         {
                             let phone = phone.clone();
+                            let phone_dial = phone.clone();
                             let mut copy = copy.clone();
                             rsx! {
                                 CopyField {
@@ -99,7 +114,11 @@ pub fn MemberDetail(view: Signal<MemberView>, member: Member) -> Element {
                                     label: t.t("Phone"),
                                     value: phone.clone(),
                                     copied: *copied_field.read() == Some("phone"),
-                                    on_copy: move |_| { copy(phone.clone(), "phone"); }
+                                    on_copy: {
+                                        let phone = phone.clone();
+                                        move |_| { copy(phone.clone(), "phone"); }
+                                    },
+                                    on_call: move |_| { crate::views::native::dial(&phone_dial); },
                                 }
                             }
                         }
@@ -225,6 +244,7 @@ fn CopyField(
     value:   String,
     copied:  bool,
     on_copy: EventHandler<MouseEvent>,
+    #[props(default)] on_call: Option<EventHandler<MouseEvent>>,
 ) -> Element {
     let t = use_i18n();
     let button_style = if copied { 
@@ -242,6 +262,15 @@ fn CopyField(
             div { style: "flex:1; min-width:0;",
                 div { style: "{theme::LABEL} margin:0 0 3px;", "{label}" }
                 div { style: "font-size:14px; font-weight:500; color:{theme::TEXT}; word-break:break-word;", "{value}" }
+            }
+
+            if let Some(on_call) = on_call {
+                button {
+                    style: "flex-shrink:0; border:none; border-radius:999px; width:32px; height:32px; padding:0; display:flex; align-items:center; justify-content:center; cursor:pointer; background:{theme::PRIMARY_SOFT};",
+                    aria_label: t.t("Call"),
+                    onclick: move |e| { on_call.call(e); },
+                    Icon { name: IconName::Phone, size: 16, color: theme::PRIMARY.to_string() }
+                }
             }
 
             button {

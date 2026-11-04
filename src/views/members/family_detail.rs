@@ -59,8 +59,8 @@ pub fn FamilyDetail(view: Signal<MemberView>, family: Family) -> Element {
                             onclick: {
                                 let addr = addr.clone();
                                 move |_| {
-                                    let js = format!("navigator.clipboard.writeText('{addr}').catch(()=>{{}})");
-                                    let _ = dioxus::document::eval(&js);
+                                    let addr = addr.clone();
+                                    spawn(async move { crate::views::clipboard::copy_to_clipboard(&addr).await; });
                                 }
                             },
                             {t.t("Copy")}
@@ -97,9 +97,8 @@ fn MemberRow(member: Member, view: Signal<MemberView>) -> Element {
     let t = use_i18n();
     let address = member.address.clone();
     let copy_address = move |_| {
-        if let Some(addr) = &address {
-            let js = format!("navigator.clipboard.writeText('{addr}').catch(()=>{{}})");
-            let _ = dioxus::document::eval(&js);
+        if let Some(addr) = address.clone() {
+            spawn(async move { crate::views::clipboard::copy_to_clipboard(&addr).await; });
         }
     };
 

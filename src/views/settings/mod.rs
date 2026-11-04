@@ -140,22 +140,6 @@ const DONATE_ACCOUNT_NAME: &str = "DINH TRONG NAM";
 const DONATE_ACCOUNT_NUMBER: &str = "19030152672011";
 const DONATE_ACCOUNT_DISPLAY: &str = "1903 0152 6720 11";
 
-/// Clipboard copy with a textarea fallback for WebViews without the async clipboard API.
-const COPY_JS: &str = r#"
-const n = await dioxus.recv();
-let ok = false;
-try { await navigator.clipboard.writeText(n); ok = true; } catch (e) {
-  try {
-    const ta = document.createElement('textarea');
-    ta.value = n; ta.style.position = 'fixed'; ta.style.opacity = '0';
-    document.body.appendChild(ta); ta.select();
-    ok = document.execCommand('copy');
-    document.body.removeChild(ta);
-  } catch (e2) {}
-}
-dioxus.send(ok);
-"#;
-
 /// "Support the app" card: collapsible VietQR plus copyable bank details.
 #[component]
 fn DonateCard() -> Element {
@@ -219,9 +203,7 @@ fn DonateCard() -> Element {
                         style: "border:none; background:none; padding:4px 0; align-self:flex-end; color:{theme::PRIMARY}; font-size:13px; font-weight:600; cursor:pointer;",
                         onclick: move |_| {
                             spawn(async move {
-                                let mut eval = document::eval(COPY_JS);
-                                let _ = eval.send(DONATE_ACCOUNT_NUMBER);
-                                if let Ok(true) = eval.recv::<bool>().await {
+                                if crate::views::clipboard::copy_to_clipboard(DONATE_ACCOUNT_NUMBER).await {
                                     copied.set(true);
                                 }
                             });

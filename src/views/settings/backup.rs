@@ -330,7 +330,7 @@ pub fn BackupSettings() -> Element {
     let share = {
         let mut status = status.clone();
         move |file_path: PathBuf| {
-            match share_backup(&file_path, t.t("Share backup")) {
+            match crate::views::share::share_file(&file_path, "application/octet-stream", t.t("Share backup")) {
                 Ok(()) => {
                     status.set(format!("✅ {}", t.t("Choose an app to share the backup")));
                 }
@@ -990,15 +990,8 @@ fn load_members(conn: &rusqlite::Connection) -> Vec<Member> {
 }
 
 fn ensure_backup_folder() -> std::io::Result<PathBuf> {
-    // Android's cwd is read-only: use the app's private files dir (same derivation as main.rs)
-    #[cfg(target_os = "android")]
-    let backup_dir = {
-        let cmdline = std::fs::read("/proc/self/cmdline")?;
-        let package = String::from_utf8_lossy(cmdline.split(|b| *b == 0).next().unwrap_or_default()).into_owned();
-        PathBuf::from("/data/data").join(package).join("files").join("backup")
-    };
-    #[cfg(not(target_os = "android"))]
-    let backup_dir = PathBuf::from("backup");
+    // Android's cwd is read-only: app_files_dir() is the app's private files dir there
+    let backup_dir = crate::views::native::app_files_dir()?.join("backup");
     if !backup_dir.exists() {
         std::fs::create_dir_all(&backup_dir)?;
     }
@@ -1082,38 +1075,6 @@ fn save_to_backup_folder_from_string(json: &str, original_filename: &str) -> cra
 
 fn read_backup_file(path: &PathBuf) -> crate::error::Result<String> {
     Ok(std::fs::read_to_string(path)?)
-}
-
-/// Opens the native share sheet for a backup file. The file contents never leave the app except
-/// through the app the user picks.
-fn share_backup(path: &std::path::Path, chooser_title: &str) -> crate::error::Result<()> {
-    if !path.exists() {
-        return Err(crate::error::AppError::NotFound(path.display().to_string()));
-    }
-    open_share_sheet(&path.to_string_lossy(), chooser_title)
-}
-
-#[cfg(target_os = "android")]
-fn open_share_sheet(path: &str, chooser_title: &str) -> crate::error::Result<()> {
-    if crate::android::share_file_sheet(path, chooser_title) {
-        Ok(())
-    } else {
-        Err(crate::error::AppError::Validation("Couldn't open the share sheet".into()))
-    }
-}
-
-#[cfg(target_os = "ios")]
-fn open_share_sheet(path: &str, _chooser_title: &str) -> crate::error::Result<()> {
-    if crate::share_ios::share_file(path) {
-        Ok(())
-    } else {
-        Err(crate::error::AppError::Validation("Couldn't open the share sheet".into()))
-    }
-}
-
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn open_share_sheet(_path: &str, _chooser_title: &str) -> crate::error::Result<()> {
-    Err(crate::error::AppError::Validation("Sharing is only available on the phone".into()))
 }
 
 #[cfg(test)]

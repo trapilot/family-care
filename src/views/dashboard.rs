@@ -4,7 +4,9 @@ use chrono::Datelike;
 use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
 
-use crate::app::{AppState, SelectedMonth};
+use crate::app::{ActiveTab, AppState, SelectedMonth, Tab};
+use crate::models::TransactionType;
+use crate::views::reports::type_transactions::{TypeDrill, TypeTransactions};
 use crate::services::report_service::ExpenseByCategoryItem;
 use crate::services::{ReminderService, ReportService};
 use crate::views::fmt_vnd;
@@ -31,6 +33,9 @@ pub fn Dashboard() -> Element {
     // Expense per category of the selected month
     let by_category = use_signal(Vec::<ExpenseByCategoryItem>::new);
     let mut show_all = use_signal(|| false);
+    // Transaction list opened by tapping a number (income / expense / category)
+    let mut drill = use_signal(|| None::<TypeDrill>);
+    let ActiveTab(mut active_tab) = use_context::<ActiveTab>();
     // Reminders due today, as (id, title, body, done)
     let mut due_today = use_signal(Vec::<(String, String, String, bool)>::new);
     // Unpaid monthly bills, as (id, month, title, body)
@@ -106,8 +111,12 @@ pub fn Dashboard() -> Element {
     let more_rotate = if show_all() { "rotate(180deg)" } else { "none" };
 
     rsx! {
+        if let Some(d) = drill() {
+            TypeTransactions { drill: d, on_back: move |_| drill.set(None) }
+        }
+        // Kept mounted while the list is open, so Back returns to the same scroll position / state
         div {
-            style: "display:flex; flex-direction:column;",
+            style: if drill.read().is_some() { "display:none;" } else { "display:flex; flex-direction:column;" },
             AppHeader {
                 title: t.t("Overview").to_string(),
                 month: Some((year, month)),
@@ -121,26 +130,42 @@ pub fn Dashboard() -> Element {
                 div {
                     class: "money-box",
                     style: "background:#fff; color:{theme::TEXT}; border:1px solid {theme::BORDER}; border-top:4px solid {theme::PRIMARY}; padding:18px 16px;",
-                    div { style: "font-size:13px; font-weight:600; color:{theme::TEXT_MUTED};", {t.t("Balance")} }
                     div {
-                        style: "font-size:28px; font-weight:700; overflow-wrap:anywhere; color:{balance_color};",
-                        "{fmt_vnd(balance)}"
+                        style: "cursor:pointer;",
+                        onclick: move |_| active_tab.set(Tab::Transactions),
+                        div { style: "font-size:13px; font-weight:600; color:{theme::TEXT_MUTED};", {t.t("Balance")} }
+                        div {
+                            style: "font-size:28px; font-weight:700; overflow-wrap:anywhere; color:{balance_color};",
+                            "{fmt_vnd(balance)}"
+                        }
                     }
                     div { style: "border-top:1px solid {theme::BORDER}; margin:14px 0 12px;" }
                     div {
                         style: "display:grid; grid-template-columns:1fr 1fr; gap:12px;",
                         div {
-                            div { style: "font-size:12px; font-weight:600; color:{theme::TEXT_MUTED};", {t.t("Income")} }
+                            style: "cursor:pointer;",
+                            onclick: move |_| drill.set(Some(TypeDrill::month(TransactionType::Income, year, month))),
+                            div {
+                                style: "font-size:12px; font-weight:600; color:{theme::TEXT_MUTED}; display:flex; align-items:center; gap:2px;",
+                                {t.t("Income")}
+                                Icon { name: IconName::ChevronRight, size: 14, color: theme::TEXT_MUTED.to_string() }
+                            }
                             div { style: "font-size:17px; font-weight:700; color:{theme::POSITIVE}; overflow-wrap:anywhere;", "{fmt_vnd(s.income)}" }
                         }
                         div {
-                            style: "text-align:right;",
-                            div { style: "font-size:12px; font-weight:600; color:{theme::TEXT_MUTED};", {t.t("Expense")} }
+                            style: "text-align:right; cursor:pointer;",
+                            onclick: move |_| drill.set(Some(TypeDrill::month(TransactionType::Expense, year, month))),
+                            div {
+                                style: "font-size:12px; font-weight:600; color:{theme::TEXT_MUTED}; display:flex; align-items:center; justify-content:flex-end; gap:2px;",
+                                {t.t("Expense")}
+                                Icon { name: IconName::ChevronRight, size: 14, color: theme::TEXT_MUTED.to_string() }
+                            }
                             div { style: "font-size:17px; font-weight:700; color:{theme::DANGER}; overflow-wrap:anywhere;", "{fmt_vnd(s.expense)}" }
                         }
                     }
                     div {
-                        style: "margin-top:12px; background:{theme::PRIMARY_SOFT}; color:{theme::PRIMARY}; padding:10px 12px; display:flex; justify-content:space-between; align-items:center; gap:8px;",
+                        style: "margin-top:12px; background:{theme::PRIMARY_SOFT}; color:{theme::PRIMARY}; padding:10px 12px; display:flex; justify-content:space-between; align-items:center; gap:8px; cursor:pointer;",
+                        onclick: move |_| drill.set(Some(TypeDrill::month(TransactionType::Expense, year, month))),
                         span { style: "font-size:13px; font-weight:600;", {t.t("Day (avg.)")} }
                         span {
                             style: if day_avg.is_zero() { "font-size:16px; font-weight:700; opacity:.6;" } else { "font-size:16px; font-weight:700;" },
@@ -238,7 +263,11 @@ pub fn Dashboard() -> Element {
                         }
                         for (i, item) in cat_items.iter().take(shown_cats).enumerate() {
                             div {
-                                style: if i == 0 { "padding:12px 14px;" } else { "padding:12px 14px; border-top:1px solid #e6e6ef;" },
+                                style: if i == 0 { "padding:12px 14px; cursor:pointer;" } else { "padding:12px 14px; border-top:1px solid #e6e6ef; cursor:pointer;" },
+                                onclick: {
+                                    let category_id = item.category_id.clone();
+                                    move |_| drill.set(Some(TypeDrill::category(category_id.clone(), year, month)))
+                                },
                                 CategoryRow { item: item.clone() }
                             }
                         }

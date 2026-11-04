@@ -4,6 +4,7 @@ pub mod list;
 pub mod family_form;
 pub mod family_detail;
 pub mod id_cards;
+pub mod vcard;
 
 use dioxus::prelude::*;
 use crate::models::{Family, Member};

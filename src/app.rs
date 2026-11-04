@@ -44,6 +44,10 @@ impl AppState {
 #[derive(Clone, Copy)]
 pub struct SelectedMonth(pub Signal<(i32, u32)>);
 
+/// Active bottom tab, so a screen can jump to another tab (e.g. Overview → Transactions)
+#[derive(Clone, Copy)]
+pub struct ActiveTab(pub Signal<Tab>);
+
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 
 #[derive(Clone, PartialEq, Debug)]
@@ -133,6 +137,7 @@ pub fn App() -> Element {
 #[component]
 fn MainApp() -> Element {
     let active_tab = use_signal(|| Tab::Dashboard);
+    use_context_provider(|| ActiveTab(active_tab));
     let selected_month = use_signal(crate::views::current_month);
     use_context_provider(|| SelectedMonth(selected_month));
     crate::views::rates::use_rates_provider();

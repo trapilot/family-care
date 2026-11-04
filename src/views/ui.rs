@@ -2,6 +2,7 @@ use dioxus::prelude::*;
 
 use crate::i18n::use_i18n;
 use crate::models::{Transaction, TransactionType};
+use crate::views::gestures::{use_swipe, use_swipe_anchor};
 use crate::views::icons::{emoji_icon, icon_for_emoji, Icon, IconName};
 use crate::views::{fmt_currency, iso_to_display, month_label, theme, ts_to_date_str};
 
@@ -233,10 +234,29 @@ pub fn AppHeader(
     #[props(default)] action: Option<Element>,
 ) -> Element {
     let style = format!("background:{}; padding:10px 8px; min-height:56px; box-sizing:border-box; color:{}; display:flex; align-items:center;", theme::HEADER_BG, theme::TEXT);
-    if let (Some((year, month)), Some(on_month)) = (month, on_month) {
+    // Swipe left = next month, swipe right = previous month (hooks run unconditionally)
+    let anchor = use_swipe_anchor();
+    let month_nav = match (month, on_month) {
+        (Some((year, month)), Some(on_month)) => Some((year, month, on_month)),
+        _ => None,
+    };
+    use_swipe(
+        anchor.clone(),
+        month_nav.map(|(y, m, on_month)| {
+            let (ny, nm) = next_month(y, m);
+            EventHandler::new(move |_: ()| on_month.call((ny, nm)))
+        }),
+        month_nav.map(|(y, m, on_month)| {
+            let (py, pm) = prev_month(y, m);
+            EventHandler::new(move |_: ()| on_month.call((py, pm)))
+        }),
+        None,
+    );
+    if let Some((year, month, on_month)) = month_nav {
         let on_change = EventHandler::new(move |ym| on_month.call(ym));
         return rsx! {
             div {
+                id: "{anchor}",
                 style: "{style}",
                 {month_nav_button(prev_month(year, month), false, on_change)}
                 div {
@@ -252,6 +272,7 @@ pub fn AppHeader(
     }
     rsx! {
         div {
+            id: "{anchor}",
             style: "{style}",
             div { style: "width:40px; flex-shrink:0;" }
             div {
@@ -468,18 +489,22 @@ pub fn TxnItem(
 #[component]
 pub fn ScreenHeader(
     title: String,
-    #[props(default)] on_back: Option<EventHandler<MouseEvent>>,
+    #[props(default)] on_back: Option<EventHandler<()>>,
     #[props(default)] action: Option<Element>,
 ) -> Element {
     let t = use_i18n();
+    // Swipe right anywhere (including from the left edge) goes back like the arrow button
+    let anchor = use_swipe_anchor();
+    use_swipe(anchor.clone(), None, on_back, on_back);
     rsx! {
         div {
+            id: "{anchor}",
             style: "background:{theme::HEADER_BG}; padding:12px 8px; min-height:56px; box-sizing:border-box; display:flex; align-items:center; gap:4px; color:{theme::TEXT};",
             if let Some(on_back) = on_back {
                 button {
                     style: "width:40px; height:40px; border:none; background:transparent; border-radius:50%; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0; flex-shrink:0;",
                     aria_label: t.t("Back"),
-                    onclick: move |e| on_back.call(e),
+                    onclick: move |_| on_back.call(()),
                     Icon { name: IconName::ArrowLeft, size: 24, color: theme::TEXT.to_string() }
                 }
             } else {

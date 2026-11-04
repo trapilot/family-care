@@ -8,6 +8,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Matrix
+import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
 import android.util.Base64
@@ -160,14 +161,14 @@ class CameraCapture(private val activity: Activity) {
         }
     }
 
-    /** Opens the system share sheet (app chooser) for a file in filesDir/backup. Returns 1 if started, 0 if not. */
-    fun shareFile(path: String, chooserTitle: String): Int {
+    /** Opens the system share sheet (app chooser) for a file in filesDir/backup or filesDir/share. Returns 1 if started, 0 if not. */
+    fun shareFile(path: String, chooserTitle: String, mime: String): Int {
         try {
             val file = File(path)
             if (!file.isFile) return 0
             val uri = FileProvider.getUriForFile(activity, activity.packageName + ".fileprovider", file)
             val send = Intent(Intent.ACTION_SEND).apply {
-                type = "application/octet-stream"
+                type = mime
                 putExtra(Intent.EXTRA_STREAM, uri)
                 putExtra(Intent.EXTRA_SUBJECT, file.name)
                 clipData = ClipData.newRawUri(file.name, uri)
@@ -184,6 +185,24 @@ class CameraCapture(private val activity: Activity) {
             return 1
         } catch (t: Throwable) {
             Log.e(TAG, "shareFile failed", t)
+            return 0
+        }
+    }
+
+    /** Opens the dialer prefilled with `number` (no CALL_PHONE permission needed). Returns 1 if started, 0 if not. */
+    fun dial(number: String): Int {
+        try {
+            val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(number)))
+            activity.runOnUiThread {
+                try {
+                    activity.startActivity(intent)
+                } catch (t: Throwable) {
+                    Log.w(TAG, "dial failed", t)
+                }
+            }
+            return 1
+        } catch (t: Throwable) {
+            Log.e(TAG, "dial failed", t)
             return 0
         }
     }

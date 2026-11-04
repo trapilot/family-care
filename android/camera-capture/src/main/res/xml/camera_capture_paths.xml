@@ -3,4 +3,5 @@
 <paths>
     <external-files-path name="camera_captures" path="Pictures/" />
     <files-path name="backups" path="backup/" />
+    <files-path name="shared" path="share/" />
 </paths>

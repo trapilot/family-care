@@ -167,6 +167,8 @@ fn vi(en: &str) -> Option<&'static str> {
         "Update"                               => "Cập nhật",
         "Remove"                               => "Gỡ bỏ",
         "Copy"                                 => "Sao chép",
+        "Call"                                 => "Gọi",
+        "Share contact"                        => "Chia sẻ danh thiếp",
         "✓ Copied"                             => "✓ Đã chép",
         "Continue"                             => "Tiếp tục",
         "Verify"                               => "Xác nhận",

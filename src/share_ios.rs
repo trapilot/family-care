@@ -1,10 +1,10 @@
-//! iOS share sheet (UIActivityViewController) for backup files.
+//! iOS native helpers: share sheet (UIActivityViewController) for files, and opening the dialer.
 
 use dispatch2::DispatchQueue;
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2::{MainThreadMarker, MainThreadOnly};
-use objc2_foundation::{NSArray, NSPoint, NSRect, NSSize, NSString, NSURL};
+use objc2_foundation::{NSArray, NSDictionary, NSPoint, NSRect, NSSize, NSString, NSURL};
 use objc2_ui_kit::{UIActivityViewController, UIApplication, UIViewController, UIWindowScene};
 
 /// Present the share sheet for the file at `path`. Returns true when the sheet was presented (or
@@ -74,4 +74,33 @@ fn top_view_controller(mtm: MainThreadMarker) -> Option<Retained<UIViewControlle
         }
         Some(top)
     }
+}
+
+/// Open the phone dialer for `number` (digits and a leading `+`). Returns false when the URL is
+/// invalid; the open itself is queued on the main thread when called from another thread.
+pub fn dial(number: &str) -> bool {
+    let ns = NSString::from_str(&format!("tel:{number}"));
+    if NSURL::URLWithString(&ns).is_none() {
+        return false;
+    }
+    match MainThreadMarker::new() {
+        Some(mtm) => open_tel(mtm, &ns),
+        None => {
+            let number = number.to_string();
+            DispatchQueue::main().exec_async(move || {
+                if let Some(mtm) = MainThreadMarker::new() {
+                    open_tel(mtm, &NSString::from_str(&format!("tel:{number}")));
+                }
+            });
+            true
+        }
+    }
+}
+
+fn open_tel(mtm: MainThreadMarker, s: &NSString) -> bool {
+    let Some(url) = NSURL::URLWithString(s) else { return false };
+    let app = UIApplication::sharedApplication(mtm);
+    let options = NSDictionary::new();
+    unsafe { app.openURL_options_completionHandler(&url, &options, None) };
+    true
 }

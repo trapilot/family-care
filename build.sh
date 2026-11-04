@@ -3,7 +3,7 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: $0 <android|ios> [--debug]" >&2
+  echo "Usage: $0 <android|ios> [release|debug]   (default: release)" >&2
   echo "  Env: OUT_DIR (default: repo root)" >&2
   exit 1
 }
@@ -19,16 +19,12 @@ case "$PLATFORM" in
   *) usage ;;
 esac
 
-MODE="release"
-DX_FLAGS=(--release)
-if [[ $# -gt 0 ]]; then
-  if [[ "$1" == "--debug" && $# -eq 1 ]]; then
-    MODE="debug"
-    DX_FLAGS=()
-  else
-    usage
-  fi
-fi
+[[ $# -le 1 ]] || usage
+case "${1:-release}" in
+  release) MODE="release"; DX_FLAGS=(--release) ;;
+  debug | --debug) MODE="debug"; DX_FLAGS=() ;;
+  *) usage ;;
+esac
 
 OUT_DIR="${OUT_DIR:-$PWD}"
 mkdir -p "$OUT_DIR"
