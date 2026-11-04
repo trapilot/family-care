@@ -95,12 +95,6 @@ pub fn FamilyDetail(view: Signal<MemberView>, family: Family) -> Element {
 #[component]
 fn MemberRow(member: Member, view: Signal<MemberView>) -> Element {
     let t = use_i18n();
-    let address = member.address.clone();
-    let copy_address = move |_| {
-        if let Some(addr) = address.clone() {
-            spawn(async move { crate::views::clipboard::copy_to_clipboard(&addr).await; });
-        }
-    };
 
     rsx! {
         div {
@@ -123,13 +117,6 @@ fn MemberRow(member: Member, view: Signal<MemberView>) -> Element {
                 }
                 if let Some(phone) = &member.phone {
                     div { style: "font-size:13px; color:{theme::TEXT_MUTED};", "{phone}" }
-                }
-            }
-            if member.address.is_some() {
-                button {
-                    style: "background:{theme::PRIMARY_SOFT}; color:{theme::PRIMARY}; border:none; border-radius:999px; padding:6px 12px; font-size:12px; font-weight:600; cursor:pointer; flex-shrink:0;",
-                    onclick: copy_address,
-                    {t.t("Copy Address")}
                 }
             }
             Icon { name: IconName::ChevronRight, size: 20, color: theme::TEXT_MUTED.to_string() }

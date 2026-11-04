@@ -9,7 +9,7 @@ use crate::models::CardSummary;
 use crate::views::fmt_date;
 use std::collections::HashMap;
 use crate::views::icons::{Icon, IconName};
-use crate::views::ui::{HeaderAction, ScreenHeader, IconTile, SectionTitle};
+use crate::views::ui::{HeaderAction, ScreenHeader, IconTile};
 use crate::views::{currency_name, fmt_currency, fmt_vnd, shown_totals, theme};
 use crate::views::rates::ConvertedTotal;
 use rust_decimal::Decimal;
@@ -140,19 +140,29 @@ pub fn WalletList(view: Signal<WalletView>) -> Element {
                         let trailing_color = if vnd_sum < Decimal::ZERO { theme::NEGATIVE } else { theme::POSITIVE };
                         rsx! {
                             div {
-                                style: "display:flex; flex-direction:column; gap:14px;",
-                                SectionTitle { title: t.t(title).to_string(), trailing, trailing_color }
-                                for wallet in group.iter() {
-                                    WalletRow {
-                                        wallet: wallet.clone(),
-                                        card: card_summaries.read().get(&wallet.id).cloned(),
-                                        on_tap: {
-                                            let w = wallet.clone();
-                                            move |_| { view.set(WalletView::Detail(w.clone())); }
-                                        },
-                                        on_edit: {
-                                            let w = wallet.clone();
-                                            move |_| { view.set(WalletView::Edit(w.clone())); }
+                                style: "{theme::CARD} padding-top:4px; padding-bottom:4px;",
+                                div {
+                                    style: "display:flex; justify-content:space-between; align-items:baseline; gap:8px; padding:10px 0; border-bottom:1px solid #e6e6ef;",
+                                    span { style: "font-size:15px; font-weight:700; color:{theme::TEXT};", "{t.t(title)}" }
+                                    if let Some(trailing) = trailing {
+                                        span { style: "font-size:15px; font-weight:600; color:{trailing_color};", "{trailing}" }
+                                    }
+                                }
+                                for (i, wallet) in group.iter().enumerate() {
+                                    div {
+                                        key: "{wallet.id}",
+                                        style: if i > 0 { "border-top:1px solid #e6e6ef; padding:10px 0;" } else { "padding:10px 0;" },
+                                        WalletRow {
+                                            wallet: wallet.clone(),
+                                            card: card_summaries.read().get(&wallet.id).cloned(),
+                                            on_tap: {
+                                                let w = wallet.clone();
+                                                move |_| { view.set(WalletView::Detail(w.clone())); }
+                                            },
+                                            on_edit: {
+                                                let w = wallet.clone();
+                                                move |_| { view.set(WalletView::Edit(w.clone())); }
+                                            }
                                         }
                                     }
                                 }
@@ -163,11 +173,15 @@ pub fn WalletList(view: Signal<WalletView>) -> Element {
 
                 if !disabled.is_empty() {
                     div {
-                        style: "display:flex; flex-direction:column; gap:14px;",
-                        SectionTitle { title: t.t("Disabled").to_string() }
+                        style: "{theme::CARD} padding-top:4px; padding-bottom:4px;",
                         div {
-                            style: "opacity:.5; display:flex; flex-direction:column; gap:14px;",
-                            for wallet in disabled.iter() {
+                            style: "padding:10px 0; border-bottom:1px solid #e6e6ef;",
+                            span { style: "font-size:15px; font-weight:700; color:{theme::TEXT};", "{t.t(\"Disabled\")}" }
+                        }
+                        for (i, wallet) in disabled.iter().enumerate() {
+                            div {
+                                key: "{wallet.id}",
+                                style: if i > 0 { "opacity:.5; border-top:1px solid #e6e6ef; padding:10px 0;" } else { "opacity:.5; padding:10px 0;" },
                                 WalletRow {
                                     wallet: wallet.clone(),
                                     card: None,

@@ -378,7 +378,6 @@ fn vi(en: &str) -> Option<&'static str> {
         "Common Address"                       => "Địa chỉ chung",
         "Note"                                 => "Ghi chú",
         "Members"                              => "Thành viên",
-        "Copy Address"                         => "Chép địa chỉ",
         "Add Family"                           => "Thêm gia đình",
         "Edit Family"                          => "Sửa gia đình",
         "Family Name"                          => "Tên gia đình",
