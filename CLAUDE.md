@@ -22,7 +22,7 @@ Dioxus 0.7 mobile app (iOS + Android). Dioxus API conventions are in AGENTS.md.
   export ANDROID_NDK_HOME=$(ls -d ~/Library/Android/sdk/ndk/* | tail -1)
   ```
 - Build: `dx build --platform android`. APK: `target/dx/family-money/debug/android/app/app/build/outputs/apk/debug/app-debug.apk`.
-- Build script: `./build.sh <android|ios> [release|debug]` builds (release by default; `--debug` still works) and copies the result to `$OUT_DIR` (default: the repo root) as `family-money-<mode>.apk` / `.app`.
+- Build script: `./build.sh <android|ios> [release|debug]` builds (release by default; `--debug` still works) and copies the result to `$OUT_DIR` (default: the repo root) as `tagi-<mode>.apk` / `.app`.
   - Android: sets `JAVA_HOME` / `ANDROID_HOME` / `ANDROID_NDK_HOME` automatically if unset.
   - Sets the home-screen name to `APP_NAME` ("TaGi"); dx would otherwise show "FamilyMoney" (from the crate name).
 - App name **TaGi**, app id `vn.namdwb.tagi` (Dioxus.toml `[bundle] identifier`). Don't change the id: it is the app's

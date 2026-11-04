@@ -64,7 +64,7 @@ if [[ "$PLATFORM" == "android" ]]; then
     echo "Error: no APK found under $APK_DIR" >&2
     exit 1
   fi
-  DEST="$OUT_DIR/family-money-$MODE.apk"
+  DEST="$OUT_DIR/tagi-$MODE.apk"
   cp -f "$APK" "$DEST"
   # Catch a truncated/corrupt copy (seen once right after a rename, while Gradle was still finishing the APK)
   if ! unzip -tq "$DEST" >/dev/null 2>&1; then
@@ -98,7 +98,7 @@ else
   # Home-screen name (dx derives "FamilyMoney" from the crate name)
   /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName $APP_NAME" "$APP/Info.plist"
   rm -f "$ICON_TMP" "$ICON_PLIST"
-  DEST="$OUT_DIR/family-money-$MODE.app"
+  DEST="$OUT_DIR/tagi-$MODE.app"
   rm -rf "$DEST"
   cp -R "$APP" "$DEST"
 fi

@@ -11,5 +11,5 @@
 *.db-*
 
 # build.sh output
-/family-money-*.apk
-/family-money-*.app
+/tagi-*.apk
+/tagi-*.app

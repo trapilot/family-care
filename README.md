@@ -1,8 +1,8 @@
 # TaGi
 
-A local-first personal and family money management app built with Rust, Dioxus, and SQLite.
+A local-first personal and family money management app for iOS and Android, built with Rust, Dioxus, and SQLite.
 
-The application is designed for users who want full control over their financial data without relying on cloud services. All data is stored locally and can be backed up using a portable `.bk` file.
+The app is for people who want full control over their financial data without relying on cloud services. All data stays on the device, is protected by a PIN, and can be backed up to a portable `.bk` file. The UI is available in Vietnamese and English.
 
 ---
 
@@ -10,13 +10,29 @@ The application is designed for users who want full control over their financial
 
 ### Cash Flow Management
 
-* Income tracking
-* Expense tracking
-* Wallet-to-wallet transfers
-* Multi-wallet support
-* Transaction history and filtering
-* Category management
-* Budget monitoring
+* Income, expense and wallet-to-wallet transfers, plus an opening balance per wallet
+* Wallets of type cash, bank, e-wallet, credit card, loan and investment
+* Transaction history with filters, day totals and receipt photos
+* Category management with budgets
+* Overview by month (swipe left / right to change month) with drill-down from every total
+* Credit card summary: amount owed and statement due date
+
+### Bank Statements
+
+* Import bank statement photos with on-device OCR (Apple Vision / Google ML Kit)
+* Supported layout: Techcombank
+* Amount detection in receipts and bank-transfer screenshots
+
+### Family & Members
+
+* Families and member profiles
+* ID card (CCCD) photos, exportable as a PDF
+* Share a member as a contact card (vCard: name, phone, address, birthday only)
+
+### Reminders & Bills
+
+* Recurring reminders and monthly bills with local notifications (iOS; Android not yet)
+* A bill keeps notifying from its due day until the month is marked paid
 
 ### Investment Management
 
@@ -26,20 +42,23 @@ The application is designed for users who want full control over their financial
 * Realized profit & loss tracking
 * Unrealized profit & loss tracking
 * Manual market price updates
+* Investment performance report
 
 ### Multi-Currency Support
 
-Currencies are intentionally separated and **never automatically converted**.
+Balances are kept separately per currency and are **never converted** in the stored data.
 
-Supported currencies:
+Supported money types (names, units, order and visibility are editable under Settings → Money types):
 
 | Currency | Unit                |
 | -------- | ------------------- |
-| VND      | Vietnamese Dong     |
-| USD      | US Dollar           |
-| GOLD     | Chỉ Vàng            |
+| VND      | Vietnamese Dong (₫) |
+| USD      | US Dollar ($)       |
+| GOLD     | Chỉ Vàng (chỉ)      |
 
 Cross-currency transfers require manual input of the received amount.
+
+For display only, the overview shows an approximate "≈ total in VND" using online rates: USD/VND from Yahoo Finance (no API key). The gold price source is not wired up yet.
 
 Example:
 
@@ -175,12 +194,30 @@ adb devices                # emulator-5554 should be listed
 dx serve --platform android
 ```
 
+### 5. Build an installable app
+
+```sh
+./build.sh android            # release APK  -> ./tagi-release.apk
+./build.sh ios debug          # debug .app   -> ./tagi-debug.app
+OUT_DIR=dist ./build.sh android
+```
+
+`build.sh` runs `dx build`, then sets the home-screen name (TaGi) and the app icons, which `dx` 0.7 does not apply on its own. Use it instead of a bare `dx build` for anything you install.
+
+### 6. Run the tests
+
+```sh
+cargo test
+cargo test -- --ignored   # also the tests that hit the network (exchange rates)
+```
+
+On first launch the app asks you to create a PIN. "Forgot PIN?" wipes all data, so export a backup first.
+
 ---
 
 ## Project Goals
 
-* Single-user finance management
-* Family money organization
+* Personal and family finance management on one device
 * Offline-first experience
 * Simple and transparent financial records
 * Easy backup and restore
@@ -196,7 +233,7 @@ dx serve --platform android
 wallet.balance += amount
 ```
 
-Income categories:
+Income types:
 
 * Salary
 * Bonus
@@ -210,6 +247,16 @@ Income categories:
 ```text
 wallet.balance -= amount
 ```
+
+Expense categories (defaults, editable): Food & Drinks, Transport, Shopping, Health, Entertainment, Education, Bills, Cosmetics, Household Goods, Travel, Family Support, Other.
+
+### Opening Balance
+
+```text
+wallet.balance += amount
+```
+
+The starting amount of a wallet. It is not counted as income in reports.
 
 ### Transfer
 
@@ -266,6 +313,8 @@ Realized P&L:
 cash
 bank
 e_wallet
+credit_card
+loan
 investment
 ```
 
@@ -282,38 +331,46 @@ crypto
 
 ## Application Structure
 
+Bottom tabs:
+
 ```text
-Dashboard
-├── Net Worth by Currency
-├── Monthly Income vs Expense
-├── Savings & Savings Rate
-├── Overspending Alerts
-└── Recent Transactions
+Overview
+├── Balance, income and expense for the month
+├── Daily average spending
+├── Expense by category
+└── Credit card summary
 
 Transactions
-├── Transaction List
-├── Filters
-├── Add Transaction
-├── Edit Transaction
-└── Delete Transaction
+├── Transaction list with filters and day totals
+├── Add / edit / delete transaction
+└── Receipt photos
 
 Wallets
-├── Wallet Overview
-├── Currency Groups
-├── Investment Wallets
-├── Wallet Details
-└── Holdings & P&L
+├── Wallets grouped by currency
+├── Wallet details
+├── Holdings & P&L
+└── ≈ total in VND (online rates)
+
+Family
+├── Families & members
+├── Member details, ID card photos, PDF export
+└── Share as contact card
 
 Reports
-├── Expense by Category
-├── Income vs Expense Timeline
-└── Investment Performance
+├── Expense by category
+├── Income vs expense timeline
+└── Investment performance
+
+Statements
+└── Import bank statement photos (OCR)
 
 Settings
 ├── Categories
-├── Export Backup
-├── Import Backup
-└── Family Members (Phase 2)
+├── Money types
+├── Reminders & bills
+├── Backup (export / import / share)
+├── Language
+└── Support the app (donate QR)
 ```
 
 ---
@@ -323,49 +380,39 @@ Settings
 ```text
 family-money/
 ├── src/
-│   ├── main.rs
-│   ├── app.rs
-│   ├── db/
-│   │   ├── mod.rs
-│   │   └── migrations.rs
-│   ├── models/
-│   │   ├── wallet.rs
-│   │   ├── transaction.rs
-│   │   ├── category.rs
-│   │   ├── holding.rs
-│   │   ├── family.rs
-│   │   └── member.rs
-│   ├── repository/
-│   │   ├── wallet_repo.rs
-│   │   ├── transaction_repo.rs
-│   │   ├── category_repo.rs
-│   │   ├── member_repo.rs
-│   │   ├── family_repo.rs
-│   │   └── holding_repo.rs
-│   ├── services/
-│   │   ├── transaction_service.rs
-│   │   ├── holding_service.rs
-│   │   ├── member_service.rs
-│   │   ├── family_service.rs
-│   │   └── report_service.rs
-│   └── views/
-│       ├── dashboard.rs
-│       ├── members/
-│       ├── transactions/
-│       ├── wallets/
-│       ├── reports/
-│       └── settings/
+│   ├── main.rs              # entry point, database path per platform
+│   ├── app.rs               # root component, PIN gate, bottom tabs
+│   ├── i18n.rs              # English / Vietnamese strings
+│   ├── android.rs           # JNI bridge to android/camera-capture
+│   ├── share_ios.rs         # iOS share sheet
+│   ├── db/                  # connection + migrations
+│   ├── models/              # wallet, transaction, category, holding, currency, rate,
+│   │                        # family, member, id_card, credit_card, reminder, bill, statement
+│   ├── repository/          # one *_repo.rs per table (SQLite queries)
+│   ├── services/            # transactions, holdings, reports, rates, reminders,
+│   │                        # credit cards, members, receipt amounts, ID card PDF,
+│   │                        # statement/ (OCR, parser, store)
+│   ├── notify/              # local notifications (iOS)
+│   └── views/               # Dioxus screens and shared UI
+│       ├── dashboard.rs     # Overview
+│       ├── transactions/  wallets/  members/  reports/  statements/  settings/  pin/
+│       ├── ui.rs            # AppHeader, ScreenHeader and shared widgets
+│       ├── gestures.rs      # swipe gestures
+│       └── theme.rs  icons.rs  rates.rs  share.rs  photo_picker.rs ...
+├── android/
+│   ├── camera-capture/      # Kotlin: camera capture, ML Kit OCR, share sheet
+│   └── launcher-icon/       # Android launcher icon
+├── ios/Assets.xcassets      # iOS app icon
+├── build.sh                 # build + name + icons + copy output
 ├── Cargo.toml
-└── Dioxus.toml
+└── Dioxus.toml              # app id vn.namdwb.tagi
 ```
 
 ---
 
 ## Backup Format
 
-The application supports exporting and importing a portable backup file with the `.bk` extension.
-
-Example:
+Settings → Backup exports everything to a portable JSON file named `YYYYMMDD_HHmmss.bk`, which can be shared or imported on another device. **Import replaces all existing data.**
 
 ```json
 {
@@ -375,30 +422,38 @@ Example:
   "holdings": [],
   "categories": [],
   "transactions": [],
-  "families": [],
   "members": [],
-  "settings": {}
+  "families": [],
+  "id_card_images": [],
+  "currencies": [],
+  "credit_cards": [],
+  "reminders": [],
+  "bills": [],
+  "transaction_images": [],
+  "settings": []
 }
 ```
+
+Photos are embedded as base64. Only safe settings travel with a backup (language and reminder timing); the PIN is never included. Older backups without the newer sections still import.
 
 ---
 
 ## Roadmap
 
-### Phase 1
+### Done
 
-* Wallet management
-* Transaction management
-* Category management
-* Budget tracking
-* Investment tracking
-* Reports and analytics
+* Wallets, transactions, categories and budgets
+* Investment tracking and reports
 * Backup and restore
+* Family member profiles and ID cards
+* Reminders and monthly bills (iOS notifications)
+* Bank statement import (Techcombank)
 
-### Phase 2
+### Next
 
-* Family member profiles
-* Household information
+* Android notifications
+* Gold price source for the VND estimate
+* More bank statement layouts
 
 ---
 
@@ -418,7 +473,7 @@ Example:
 
 🚧 In Development
 
-The project is currently focused on completing the core finance and investment management features before expanding into family profile management.
+The core finance, investment and family features are in place; work continues on the items under Roadmap → Next.
 
 ---
 
