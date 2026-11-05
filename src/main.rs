@@ -23,7 +23,7 @@ fn main() {
         let dir = PathBuf::from(home)
             .join("Library")
             .join("Application Support")
-            .join("FamilyMoney");
+            .join("TaGi");
 
         std::fs::create_dir_all(&dir)
             .expect("Failed to create database directory");

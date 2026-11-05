@@ -222,8 +222,8 @@ fn InvestmentCard(item: InvestmentPnlItem, live_price: Option<Decimal>) -> Eleme
     let t = use_i18n();
     let (price, mv, unrealized, pct) = with_price(&item, live_price);
     let unr = unrealized.unwrap_or(Decimal::ZERO);
-    let unr_color  = if unr >= Decimal::ZERO { theme::POSITIVE } else { theme::NEGATIVE };
-    let real_color = if item.realized_pnl >= Decimal::ZERO { theme::POSITIVE } else { theme::NEGATIVE };
+    let unr_color = theme::signed_color(unr);
+    let real_color = theme::signed_color(item.realized_pnl);
 
     let cur = item.currency.clone();
     let money = |v: Decimal| fmt_currency(v, &cur);

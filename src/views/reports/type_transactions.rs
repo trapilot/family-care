@@ -74,7 +74,11 @@ pub fn TypeTransactions(drill: TypeDrill, on_back: EventHandler<()>) -> Element 
     } else {
         format!("{} – {}", month_label(drill.from.0, drill.from.1), month_label(drill.to.0, drill.to.1))
     };
-    let color = type_color(&drill.txn_type);
+    let color = match drill.txn_type {
+        TransactionType::Income  => theme::signed_color(total),
+        TransactionType::Expense => theme::signed_color(-total),
+        _                        => theme::PRIMARY,
+    };
 
     rsx! {
         div {
@@ -91,7 +95,6 @@ pub fn TypeTransactions(drill: TypeDrill, on_back: EventHandler<()>) -> Element 
 
                 // ── Total ──
                 div {
-                    class: "money-box",
                     style: "{theme::CARD} display:flex; justify-content:space-between; align-items:center; gap:12px;",
                     div {
                         div { style: "font-size:14px; font-weight:600; color:{theme::TEXT};", "{period}" }
@@ -131,13 +134,5 @@ pub fn TypeTransactions(drill: TypeDrill, on_back: EventHandler<()>) -> Element 
                 }
             }
         }
-    }
-}
-
-fn type_color(txn_type: &TransactionType) -> &'static str {
-    match txn_type {
-        TransactionType::Income  => theme::POSITIVE,
-        TransactionType::Expense => theme::NEGATIVE,
-        _                        => theme::PRIMARY,
     }
 }

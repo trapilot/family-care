@@ -146,7 +146,7 @@ fn MainApp() -> Element {
     use_context_provider(|| SelectedMonth(selected_month));
     let txn_types = use_signal(|| {
         use crate::models::TransactionType;
-        vec![TransactionType::Income, TransactionType::Expense, TransactionType::Transfer]
+        vec![TransactionType::Income, TransactionType::Expense]
     });
     use_context_provider(|| TxnTypeFilter(txn_types));
     crate::views::rates::use_rates_provider();

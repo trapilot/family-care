@@ -1,11 +1,11 @@
 [package]
-name = "family-money"
+name = "tagi"
 version = "1.0.0"
 authors = ["Nam Dinh <namdwb@gmail.com>"]
 edition = "2021"
 
 [[bin]]
-name = "family-money"
+name = "tagi"
 path = "src/main.rs"
  
 [dependencies]

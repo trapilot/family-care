@@ -157,7 +157,7 @@ pub fn InitialsAvatar(
     }
 }
 
-/// Rounded-square icon badge (wallet rows)
+/// Slightly rounded square icon badge (wallet rows)
 #[component]
 pub fn IconTile(
     icon: Option<String>,
@@ -166,7 +166,7 @@ pub fn IconTile(
     #[props(default = 48)] size: u32,
     #[props(default = true)] filled: bool,
 ) -> Element {
-    icon_box(icon, fallback, &color, size, filled, "12px")
+    icon_box(icon, fallback, &color, size, filled, "4px")
 }
 
 /// 40x40 prev/next month button (double chevron)
@@ -452,12 +452,12 @@ pub fn TxnItem(
 
     rsx! {
         div {
-            style: "display:flex; align-items:center; gap:10px; padding:6px 0;",
-            IconCircle { icon, fallback: type_icon, color, size: 36 }
+            style: "display:flex; align-items:center; gap:8px; padding:4px 0;",
+            IconCircle { icon, fallback: type_icon, color, size: 30 }
             div { style: "flex:1; min-width:0;",
-                div { style: "font-size:14px; color:{theme::TEXT}; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;", "{title}" }
+                div { style: "font-size:13px; color:{theme::TEXT}; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;", "{title}" }
                 if has_meta {
-                    div { style: "display:flex; align-items:center; gap:4px; font-size:12px; color:{theme::TEXT_MUTED};",
+                    div { style: "display:flex; align-items:center; gap:4px; font-size:11px; color:{theme::TEXT_MUTED};",
                         if !meta.is_empty() {
                             span { style: "min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;", "{meta}" }
                         }
@@ -471,25 +471,25 @@ pub fn TxnItem(
                 }
             }
             div { style: "display:flex; flex-direction:column; align-items:flex-end; flex-shrink:0;",
-                div { style: "font-size:14px; font-weight:600; color:{amount_color}; white-space:nowrap;", "{amount}" }
+                div { style: "font-size:13px; font-weight:600; color:{amount_color}; white-space:nowrap;", "{amount}" }
                 if let Some(second) = second_line {
                     div { style: "font-size:11px; color:{theme::TEXT_MUTED}; white-space:nowrap;", "{second}" }
                 }
-                if has_actions {
-                    div { style: "display:flex;",
-                        if let Some(on_edit) = on_edit {
-                            button {
-                                style: "width:28px; height:28px; border:none; background:transparent; cursor:pointer; padding:0; display:flex; align-items:center; justify-content:center;",
-                                onclick: move |e| on_edit.call(e),
-                                Icon { name: IconName::Pencil, size: 16, color: theme::TEXT_MUTED.to_string() }
-                            }
+            }
+            if has_actions {
+                div { style: "display:flex; flex-shrink:0;",
+                    if let Some(on_edit) = on_edit {
+                        button {
+                            style: "width:26px; height:26px; border:none; background:transparent; cursor:pointer; padding:0; display:flex; align-items:center; justify-content:center;",
+                            onclick: move |e| on_edit.call(e),
+                            Icon { name: IconName::Pencil, size: 15, color: theme::TEXT_MUTED.to_string() }
                         }
-                        if let Some(on_delete) = on_delete {
-                            button {
-                                style: "width:28px; height:28px; border:none; background:transparent; cursor:pointer; padding:0; display:flex; align-items:center; justify-content:center;",
-                                onclick: move |e| on_delete.call(e),
-                                Icon { name: IconName::Trash, size: 16, color: theme::TEXT_MUTED.to_string() }
-                            }
+                    }
+                    if let Some(on_delete) = on_delete {
+                        button {
+                            style: "width:26px; height:26px; border:none; background:transparent; cursor:pointer; padding:0; display:flex; align-items:center; justify-content:center;",
+                            onclick: move |e| on_delete.call(e),
+                            Icon { name: IconName::Trash, size: 15, color: theme::TEXT_MUTED.to_string() }
                         }
                     }
                 }

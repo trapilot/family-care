@@ -318,27 +318,27 @@ fn CatRow(
 
     rsx! {
         div {
-            style: "display:flex; align-items:center; gap:12px; padding:12px 16px; {theme::ROW_DIVIDER}",
+            style: "display:flex; align-items:center; gap:10px; padding:6px 16px; {theme::ROW_DIVIDER}",
             IconCircle {
                 icon: Some(icon.to_string()),
                 fallback: IconName::Tag,
                 color: color.to_string(),
-                size: 40,
+                size: 30,
             }
             div { style: "flex:1; min-width:0;",
-                div { style: "font-size:15px; font-weight:600; color:{theme::TEXT};", {t.tr(&cat.name)} }
-                div { style: "font-size:13px; color:{theme::TEXT_MUTED};", "{budget_label}" }
+                div { style: "font-size:13px; font-weight:600; color:{theme::TEXT};", {t.tr(&cat.name)} }
+                div { style: "font-size:11px; color:{theme::TEXT_MUTED};", "{budget_label}" }
             }
             if !cat.is_system {
                 button {
-                    style: "border:none; background:transparent; cursor:pointer; padding:6px; display:flex;",
+                    style: "border:none; background:transparent; cursor:pointer; padding:4px; display:flex;",
                     onclick: move |e| { on_edit.call(e); },
-                    Icon { name: IconName::Pencil, size: 20, color: theme::TEXT_MUTED.to_string() }
+                    Icon { name: IconName::Pencil, size: 16, color: theme::TEXT_MUTED.to_string() }
                 }
                 button {
-                    style: "border:none; background:transparent; cursor:pointer; padding:6px; display:flex;",
+                    style: "border:none; background:transparent; cursor:pointer; padding:4px; display:flex;",
                     onclick: move |e| { on_delete.call(e); },
-                    Icon { name: IconName::Trash, size: 20, color: theme::DANGER.to_string() }
+                    Icon { name: IconName::Trash, size: 16, color: theme::DANGER.to_string() }
                 }
             }
         }

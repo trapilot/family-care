@@ -150,42 +150,42 @@ pub fn CurrenciesSettings() -> Element {
                                         }
                                         div { style: if info.is_active { "flex:1; min-width:0;" } else { "flex:1; min-width:0; opacity:.55;" },
                                             div { style: "font-size:15px; font-weight:600; color:{theme::TEXT}; overflow-wrap:anywhere;", "{display_name}" }
-                                            div { style: "font-size:13px; color:{theme::TEXT_MUTED};", "{t.t(\"Unit\")}: {info.unit} · {status}" }
+                                            div { style: "font-size:13px; color:{theme::TEXT_MUTED};", "{t.t(\"Unit\")}: {info.unit}" }
+                                        }
+                                        // Up / down stacked in one column
+                                        div { style: "display:flex; flex-direction:column; flex-shrink:0;",
+                                            button {
+                                                style: "border:none; background:transparent; padding:2px 6px; display:flex; cursor:pointer; color:{theme::TEXT_MUTED};",
+                                                disabled: i == 0,
+                                                onclick: {
+                                                    let mut apply = apply.clone();
+                                                    let code = code.clone();
+                                                    let mut order = order.clone();
+                                                    move |_| {
+                                                        order.swap(i, i - 1);
+                                                        apply(code.clone(), &|conn| CurrencyRepo::reorder(conn, &order));
+                                                    }
+                                                },
+                                                Icon { name: IconName::ChevronUp, size: 16 }
+                                            }
+                                            button {
+                                                style: "border:none; background:transparent; padding:2px 6px; display:flex; cursor:pointer; color:{theme::TEXT_MUTED};",
+                                                disabled: i == last,
+                                                onclick: {
+                                                    let mut apply = apply.clone();
+                                                    let code = code.clone();
+                                                    let mut order = order.clone();
+                                                    move |_| {
+                                                        order.swap(i, i + 1);
+                                                        apply(code.clone(), &|conn| CurrencyRepo::reorder(conn, &order));
+                                                    }
+                                                },
+                                                Icon { name: IconName::ChevronDown, size: 16 }
+                                            }
                                         }
                                         button {
-                                            style: "border:none; background:transparent; font-size:15px; padding:4px; cursor:pointer; color:{theme::TEXT_MUTED};",
-                                            disabled: i == 0,
-                                            onclick: {
-                                                let mut apply = apply.clone();
-                                                let code = code.clone();
-                                                let mut order = order.clone();
-                                                move |_| {
-                                                    order.swap(i, i - 1);
-                                                    apply(code.clone(), &|conn| CurrencyRepo::reorder(conn, &order));
-                                                }
-                                            },
-                                            Icon { name: IconName::ChevronUp, size: 16 }
-                                        }
-                                        button {
-                                            style: "border:none; background:transparent; font-size:15px; padding:4px; cursor:pointer; color:{theme::TEXT_MUTED};",
-                                            disabled: i == last,
-                                            onclick: {
-                                                let mut apply = apply.clone();
-                                                let code = code.clone();
-                                                let mut order = order.clone();
-                                                move |_| {
-                                                    order.swap(i, i + 1);
-                                                    apply(code.clone(), &|conn| CurrencyRepo::reorder(conn, &order));
-                                                }
-                                            },
-                                            Icon { name: IconName::ChevronDown, size: 16 }
-                                        }
-                                        button {
-                                            style: if info.is_active {
-                                                "padding:5px 10px; border:none; border-radius:999px; background:{theme::POSITIVE_SOFT}; color:{theme::POSITIVE}; font-size:12px; font-weight:600; cursor:pointer;"
-                                            } else {
-                                                "padding:5px 10px; border:none; border-radius:999px; background:{theme::BG}; color:{theme::TEXT_MUTED}; font-size:12px; font-weight:600; cursor:pointer;"
-                                            },
+                                            style: "border:none; background:transparent; cursor:pointer; padding:4px; display:flex;",
+                                            aria_label: "{status}",
                                             onclick: {
                                                 let mut apply = apply.clone();
                                                 let info = info.clone();
@@ -196,7 +196,11 @@ pub fn CurrenciesSettings() -> Element {
                                                     apply(code.clone(), &|conn| CurrencyRepo::update(conn, &toggled));
                                                 }
                                             },
-                                            "{status}"
+                                            if info.is_active {
+                                                Icon { name: IconName::Eye, size: 20, color: theme::POSITIVE.to_string() }
+                                            } else {
+                                                Icon { name: IconName::EyeOff, size: 20, color: theme::TEXT_MUTED.to_string() }
+                                            }
                                         }
                                         button {
                                             style: "border:none; background:transparent; cursor:pointer; padding:4px; display:flex;",

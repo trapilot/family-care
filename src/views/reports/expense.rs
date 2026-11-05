@@ -41,17 +41,17 @@ pub fn ExpenseReport() -> Element {
 
     rsx! {
         div {
-            style: "display:flex; flex-direction:column; gap:14px;",
+            style: "display:flex; flex-direction:column; gap:10px;",
 
             // ── Total ──
             div {
-                style: "background:{theme::NEGATIVE_SOFT}; border-radius:{theme::CARD_RADIUS}; padding:14px 16px; display:flex; align-items:center; cursor:pointer;",
+                style: "background:{theme::SUMMARY_BG}; color:{theme::TEXT}; padding:14px 16px; display:flex; align-items:center; cursor:pointer;",
                 onclick: move |_| drill.set(Some(TypeDrill::month(TransactionType::Expense, year, month))),
                 div { style: "flex:1;",
-                    div { style: "font-size:13px; color:{theme::TEXT}; margin-bottom:4px;", {t.t("Total Expense")} }
-                    div { style: "font-size:21px; font-weight:600; color:{theme::NEGATIVE};", "{fmt_vnd(*total.read())}" }
+                    div { style: "font-size:13px; color:{theme::MUTED_ON_PLATINUM}; margin-bottom:4px;", {t.t("Total Expense")} }
+                    div { style: "font-size:21px; font-weight:600; color:{theme::signed_on_platinum(-*total.read())};", "{fmt_vnd(*total.read())}" }
                 }
-                Icon { name: IconName::ChevronRight, size: 22, color: theme::TEXT_MUTED.to_string() }
+                Icon { name: IconName::ChevronRight, size: 22, color: theme::MUTED_ON_PLATINUM.to_string() }
             }
 
             // ── Category breakdown ──
@@ -85,25 +85,25 @@ fn CategoryBar(item: ExpenseByCategoryItem, onclick: EventHandler<MouseEvent>) -
 
     rsx! {
         div {
-            style: "display:flex; align-items:center; gap:12px; cursor:pointer;",
+            style: "display:flex; align-items:center; gap:10px; cursor:pointer;",
             onclick: move |e| onclick.call(e),
-            IconCircle { icon: item.icon.clone(), fallback: IconName::Package, color: color.clone(), size: 48 }
+            IconCircle { icon: item.icon.clone(), fallback: IconName::Package, color: color.clone(), size: 30 }
 
             div { style: "flex:1; min-width:0;",
                 div { style: "display:flex; justify-content:space-between; align-items:baseline; gap:8px;",
-                    span { style: "font-size:15px; color:{theme::TEXT};", {t.tr(&item.category_name)} }
-                    span { style: "font-size:15px; color:{theme::TEXT}; white-space:nowrap;", "{fmt_vnd(item.amount)}" }
+                    span { style: "font-size:13px; color:{theme::TEXT};", {t.tr(&item.category_name)} }
+                    span { style: "font-size:13px; color:{theme::signed_color(-item.amount)}; white-space:nowrap;", "{fmt_vnd(item.amount)}" }
                 }
-                div { style: "display:flex; align-items:center; gap:8px; margin-top:4px;",
-                    span { style: "font-size:12px; color:{theme::TEXT_MUTED}; min-width:36px;", "{pct:.0}%" }
-                    div { style: "flex:1; height:6px; background:#eeeef4; border-radius:3px; overflow:hidden;",
+                div { style: "display:flex; align-items:center; gap:8px; margin-top:2px;",
+                    span { style: "font-size:11px; color:{theme::TEXT_MUTED}; min-width:36px;", "{pct:.0}%" }
+                    div { style: "flex:1; height:3px; background:#eeeef4; border-radius:3px; overflow:hidden;",
                         div { style: "height:100%; width:{pct}%; background:{bar_color}; border-radius:3px;" }
                     }
                 }
                 if item.is_over_budget {
-                    div { style: "font-size:12px; color:{theme::NEGATIVE}; font-weight:600; margin-top:4px;", IconText { text: t.t("⚠️ Over budget").to_string(), size: 14, gap: 4 } }
+                    div { style: "font-size:11px; color:{theme::NEGATIVE}; font-weight:600; margin-top:2px;", IconText { text: t.t("⚠️ Over budget").to_string(), size: 14, gap: 4 } }
                 } else if let Some(budget) = item.budget_amount {
-                    div { style: "font-size:12px; color:{theme::TEXT_MUTED}; margin-top:4px;", "Budget: {fmt_vnd(budget)}" }
+                    div { style: "font-size:11px; color:{theme::TEXT_MUTED}; margin-top:2px;", "Budget: {fmt_vnd(budget)}" }
                 }
                 // Budget bar (if set)
                 if let Some(budget) = item.budget_amount {
@@ -113,12 +113,12 @@ fn CategoryBar(item: ExpenseByCategoryItem, onclick: EventHandler<MouseEvent>) -
                                 .to_f64().unwrap_or(0.0).min(100.0);
                             let fill = if item.is_over_budget { theme::NEGATIVE } else { theme::POSITIVE };
                             rsx! {
-                                div { style: "margin-top:4px;",
-                                    div { style: "font-size:12px; color:{theme::TEXT_MUTED}; margin-bottom:2px;",
+                                div { style: "margin-top:2px;",
+                                    div { style: "font-size:11px; color:{theme::TEXT_MUTED}; margin-bottom:2px;",
                                         {t.t("Budget usage: {pct}%").replace("{pct}", &format!("{budget_pct:.0}"))}
                                     }
                                     div {
-                                        style: "height:4px; background:#eeeef4; border-radius:2px; overflow:hidden;",
+                                        style: "height:3px; background:#eeeef4; border-radius:2px; overflow:hidden;",
                                         div { style: "height:100%; width:{budget_pct}%; background:{fill}; border-radius:2px;" }
                                     }
                                 }

@@ -378,7 +378,7 @@ Settings
 ## Project Structure
 
 ```text
-family-money/
+tagi/
 ├── src/
 │   ├── main.rs              # entry point, database path per platform
 │   ├── app.rs               # root component, PIN gate, bottom tabs

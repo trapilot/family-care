@@ -45,10 +45,10 @@ dx build --platform "$PLATFORM" ${DX_FLAGS[@]+"${DX_FLAGS[@]}"}
 
 if [[ "$PLATFORM" == "android" ]]; then
   # dx 0.7 always writes the default Dioxus launcher icon; overlay ours and re-run Gradle
-  GRADLE_DIR="target/dx/family-money/$MODE/android/app"
+  GRADLE_DIR="target/dx/tagi/$MODE/android/app"
   RES_DIR="$GRADLE_DIR/app/src/main/res"
   cp -R android/launcher-icon/. "$RES_DIR/"
-  # Launcher label: dx derives "FamilyMoney" from the crate name; the app id comes from Dioxus.toml [bundle]
+  # Launcher label: dx derives "TaGi" from the crate name; the app id comes from Dioxus.toml [bundle]
   sed -i '' 's|<string name="app_name">[^<]*</string>|<string name="app_name">'"$APP_NAME"'</string>|' "$RES_DIR/values/strings.xml"
   if [[ "$MODE" == "release" ]] && grep -q '^\[bundle.android\]' Dioxus.toml; then
     GRADLE_TASK="assembleRelease"
@@ -58,7 +58,7 @@ if [[ "$PLATFORM" == "android" ]]; then
   (cd "$GRADLE_DIR" && ./gradlew "$GRADLE_TASK")
 
   # dx 0.7 may put the release APK under apk/debug, so search instead of hardcoding
-  APK_DIR="target/dx/family-money/$MODE/android/app/app/build/outputs/apk"
+  APK_DIR="target/dx/tagi/$MODE/android/app/app/build/outputs/apk"
   APK="$(find "$APK_DIR" -name '*.apk' -print0 2>/dev/null | xargs -0 ls -t 2>/dev/null | head -1 || true)"
   if [[ -z "$APK" ]]; then
     echo "Error: no APK found under $APK_DIR" >&2
@@ -72,13 +72,13 @@ if [[ "$PLATFORM" == "android" ]]; then
     exit 1
   fi
 else
-  APP="target/dx/family-money/$MODE/ios/FamilyMoney.app"
+  APP="target/dx/tagi/$MODE/ios/TaGi.app"
   if [[ ! -d "$APP" ]]; then
     echo "Error: iOS app not found at $APP" >&2
     exit 1
   fi
   # dx 0.7 adds no iOS app icon; compile ours into the bundle and merge its Info.plist keys
-  if vtool -show-build "$APP/family-money" 2>/dev/null | grep -q IOSSIMULATOR; then
+  if vtool -show-build "$APP/tagi" 2>/dev/null | grep -q IOSSIMULATOR; then
     ACTOOL_PLATFORM="iphonesimulator"
   else
     ACTOOL_PLATFORM="iphoneos"
@@ -95,7 +95,7 @@ else
     --output-format human-readable-text >/dev/null
   # Merge the generated CFBundleIcons / CFBundleIcons~ipad keys into the app's Info.plist
   /usr/libexec/PlistBuddy -c "Merge $ICON_PLIST" "$APP/Info.plist"
-  # Home-screen name (dx derives "FamilyMoney" from the crate name)
+  # Home-screen name (dx derives "TaGi" from the crate name)
   /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName $APP_NAME" "$APP/Info.plist"
   rm -f "$ICON_TMP" "$ICON_PLIST"
   DEST="$OUT_DIR/tagi-$MODE.app"

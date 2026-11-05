@@ -326,7 +326,7 @@ fn TransactionsTab(statements: Vec<Statement>, selected: Signal<Vec<String>>) ->
     let sent: Decimal = txns.iter().map(|(_, x)| x.debit).sum();
     let received: Decimal = txns.iter().map(|(_, x)| x.credit).sum();
     let net = received - sent;
-    let net_color = if net < Decimal::ZERO { theme::NEGATIVE } else { theme::POSITIVE };
+    let net_color = theme::signed_color(net);
 
     rsx! {
         input {

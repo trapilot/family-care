@@ -206,10 +206,10 @@ pub fn TimelineReport() -> Element {
                     }
                     for s in data.iter().rev() {
                         div {
-                            style: "display:grid; grid-template-columns:80px 1fr 1fr 1fr; gap:4px; padding:8px 0; border-bottom:1px solid #e6e6ef;",
+                            style: "display:grid; grid-template-columns:80px 1fr 1fr 1fr; gap:4px; padding:5px 0; border-bottom:1px solid #e6e6ef;",
                             span { style: "font-size:12px; color:{theme::TEXT};", "{month_label(s.year, s.month)}" }
                             span {
-                                style: "font-size:12px; font-weight:600; color:{theme::POSITIVE}; text-align:right; cursor:pointer;",
+                                style: "font-size:12px; font-weight:600; color:{theme::signed_color(s.income)}; text-align:right; cursor:pointer;",
                                 onclick: {
                                     let (y, m) = (s.year, s.month);
                                     move |_| drill.set(Some(TypeDrill::month(TransactionType::Income, y, m)))
@@ -217,7 +217,7 @@ pub fn TimelineReport() -> Element {
                                 "{fmt_vnd(s.income)}"
                             }
                             span {
-                                style: "font-size:12px; font-weight:600; color:{theme::NEGATIVE}; text-align:right; cursor:pointer;",
+                                style: "font-size:12px; font-weight:600; color:{theme::signed_color(-s.expense)}; text-align:right; cursor:pointer;",
                                 onclick: {
                                     let (y, m) = (s.year, s.month);
                                     move |_| drill.set(Some(TypeDrill::month(TransactionType::Expense, y, m)))
@@ -225,11 +225,7 @@ pub fn TimelineReport() -> Element {
                                 "{fmt_vnd(s.expense)}"
                             }
                             span {
-                                style: if s.savings >= Decimal::ZERO {
-                                    "font-size:12px; font-weight:600; color:{theme::PRIMARY}; text-align:right;"
-                                } else {
-                                    "font-size:12px; font-weight:600; color:{theme::NEGATIVE}; text-align:right;"
-                                },
+                                style: "font-size:12px; font-weight:600; color:{theme::signed_color(s.savings)}; text-align:right;",
                                 "{fmt_vnd(s.savings)}"
                             }
                         }
@@ -245,11 +241,6 @@ fn MonthDetailCard(summary: MonthlySummary) -> Element {
     let t = use_i18n();
     let mut drill = use_open_drill();
     let (y, m) = (summary.year, summary.month);
-    let savings_rate_color = if summary.savings_rate >= Decimal::ZERO {
-        "#f59e0b"
-    } else {
-        theme::NEGATIVE
-    };
 
     rsx! {
         div {
@@ -266,27 +257,27 @@ fn MonthDetailCard(summary: MonthlySummary) -> Element {
                 StatBox {
                     label: t.t("Income"),
                     value: fmt_vnd(summary.income),
-                    color: theme::POSITIVE,
+                    color: theme::signed_color(summary.income),
                     onclick: move |_| drill.set(Some(TypeDrill::month(TransactionType::Income, y, m))),
                 }
 
                 StatBox {
                     label: t.t("Expense"),
                     value: fmt_vnd(summary.expense),
-                    color: theme::NEGATIVE,
+                    color: theme::signed_color(-summary.expense),
                     onclick: move |_| drill.set(Some(TypeDrill::month(TransactionType::Expense, y, m))),
                 }
 
                 StatBox {
                     label: t.t("Savings"),
                     value: fmt_vnd(summary.savings),
-                    color: theme::PRIMARY
+                    color: theme::signed_color(summary.savings)
                 }
 
                 StatBox {
                     label: t.t("Savings Rate"),
                     value: format!("{:.1}%", summary.savings_rate),
-                    color: savings_rate_color,
+                    color: theme::signed_color(summary.savings_rate),
                 }
             }
         }
@@ -298,7 +289,6 @@ fn StatBox(label: &'static str, value: String, color: &'static str, onclick: Opt
     let clickable = onclick.is_some();
     rsx! {
         div {
-            class: "money-box",
             style: if clickable { "background:#f7f7fc; border-radius:0; padding:10px; cursor:pointer;" } else { "background:#f7f7fc; border-radius:0; padding:10px;" },
             onclick: move |e| if let Some(h) = &onclick { h.call(e) },
             div { style: "font-size:12px; color:{theme::TEXT_MUTED}; margin-bottom:2px; display:flex; justify-content:space-between; align-items:center;",

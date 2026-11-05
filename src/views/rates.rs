@@ -82,15 +82,24 @@ pub fn ConvertedTotal(vnd: Decimal, usd: Decimal, gold: Decimal) -> Element {
         });
     };
 
+    // Holding only VND: the converted total would just repeat the VND total
+    let only_vnd = usd.is_zero() && gold.is_zero();
+    // Nothing left to show: no total and no rate to view or edit
+    if only_vnd && !has_rates {
+        return rsx! {};
+    }
+
     rsx! {
         div {
             style: "{theme::CARD} display:flex; flex-direction:column; gap:10px;",
-            div {
-                div { style: "font-size:13px; font-weight:600; color:{theme::TEXT_MUTED};", {t.t("Total (converted)")} }
-                div { style: "font-size:16px; font-weight:600; color:{theme::TEXT}; margin-top:2px; overflow-wrap:anywhere;", "≈ {fmt_vnd(total)}" }
-                if !missing_names.is_empty() {
-                    div { style: "font-size:12px; color:#f59e0b; margin-top:2px;",
-                        {t.t("Not included (no rate yet): {list}").replace("{list}", &missing_names.join(", "))}
+            if !only_vnd {
+                div {
+                    div { style: "font-size:13px; font-weight:600; color:{theme::TEXT_MUTED};", {t.t("Total (converted)")} }
+                    div { style: "font-size:16px; font-weight:600; color:{theme::TEXT}; margin-top:2px; overflow-wrap:anywhere;", "≈ {fmt_vnd(total)}" }
+                    if !missing_names.is_empty() {
+                        div { style: "font-size:12px; color:#f59e0b; margin-top:2px;",
+                            {t.t("Not included (no rate yet): {list}").replace("{list}", &missing_names.join(", "))}
+                        }
                     }
                 }
             }

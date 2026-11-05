@@ -55,19 +55,19 @@ pub fn HoldingsView(wallet_id: String, #[props(default = false)] readonly: bool)
 
             // ── Portfolio summary ──
             div {
-                style: "background:{theme::PRIMARY}; border-radius:0; padding:16px; color:#fff;",
+                style: "background:{theme::SUMMARY_BG}; border-radius:0; padding:16px; color:{theme::TEXT};",
                 div { style: "font-size:13px; opacity:.8; margin-bottom:8px;", {t.t("Portfolio")} }
                 div {
                     style: "display:grid; grid-template-columns:1fr 1fr; gap:10px;",
                     PortfolioStat {
                         label: t.t("Cost Basis"),
                         value: fmt_currency(total_cost, &Currency::VND),
-                        color: "#ffffff"
+                        color: theme::TEXT
                     }
                     PortfolioStat {
                         label: t.t("Market Value"),
                         value: total_mv.map(|v| fmt_currency(v, &Currency::VND)).unwrap_or("—".into()),
-                        color: "#b8f0e2"
+                        color: total_mv.map(theme::signed_on_platinum).unwrap_or(theme::TEXT)
                     }
                     PortfolioStat {
                         label: t.t("Unrealized P&L"),
@@ -75,12 +75,12 @@ pub fn HoldingsView(wallet_id: String, #[props(default = false)] readonly: bool)
                             let sign = if p >= Decimal::ZERO { "+" } else { "" };
                             format!("{sign}{}", fmt_currency(p, &Currency::VND))
                         }).unwrap_or("—".into()),
-                        color: total_pnl.map(|p| if p >= Decimal::ZERO { "#b8f0e2" } else { "#ffc2d3" }).unwrap_or("#ffffff")
+                        color: total_pnl.map(theme::signed_on_platinum).unwrap_or(theme::TEXT)
                     }
                     PortfolioStat {
                         label: t.t("Holdings"),
                         value: holdings.read().len().to_string(),
-                        color: "#ffffff"
+                        color: theme::TEXT
                     }
                 }
             }
@@ -156,7 +156,7 @@ fn HoldingCard(
     };
 
     let pnl_color = item.unrealized_pnl
-        .map(|p| if p >= Decimal::ZERO { theme::POSITIVE } else { theme::NEGATIVE })
+        .map(theme::signed_color)
         .unwrap_or(theme::TEXT_MUTED);
 
     let pnl_str = item.unrealized_pnl
@@ -237,7 +237,7 @@ fn HoldingCard(
 fn PortfolioStat(label: &'static str, value: String, color: &'static str) -> Element {
     rsx! {
         div {
-            div { style: "font-size:10px; opacity:.7; margin-bottom:2px;", "{label}" }
+            div { style: "font-size:10px; color:{theme::MUTED_ON_PLATINUM}; margin-bottom:2px;", "{label}" }
             div { style: "font-size:14px; font-weight:600; color:{color};", "{value}" }
         }
     }

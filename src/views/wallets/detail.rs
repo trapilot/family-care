@@ -65,7 +65,7 @@ pub fn WalletDetail(view: Signal<WalletView>, wallet: Wallet) -> Element {
             div {
                 style: "padding:16px 16px 0;",
                 div {
-                    style: "background:{theme::PRIMARY}; border-radius:0; padding:16px; color:#fff;",
+                    style: "background:{theme::SUMMARY_BG}; border-radius:0; padding:16px; color:{theme::TEXT};",
                     div {
                         style: "font-size:13px; opacity:.8; margin-bottom:6px;",
                         "{t.t(\"Balance\")} · {t.code(&wallet.wallet_type.to_string())}"
@@ -73,7 +73,11 @@ pub fn WalletDetail(view: Signal<WalletView>, wallet: Wallet) -> Element {
                     }
                     for (i, b) in balances.iter().enumerate() {
                         div {
-                            style: if i == 0 { "font-size:22px; font-weight:700;" } else { "font-size:16px; font-weight:600;" },
+                            style: if i == 0 {
+                                "font-size:22px; font-weight:700; color:{theme::signed_on_platinum(b.balance)};"
+                            } else {
+                                "font-size:16px; font-weight:600; color:{theme::signed_on_platinum(b.balance)};"
+                            },
                             "{fmt_currency(b.balance, &b.currency)}"
                         }
                     }
@@ -202,10 +206,9 @@ fn CardStatement(wallet_id: String, #[props(default = false)] readonly: bool) ->
     };
 
     let overdue = today > s.due_date && !s.is_paid && s.remaining_due > Decimal::ZERO;
-    let remaining_color = if s.remaining_due > Decimal::ZERO && !s.is_paid { theme::DANGER } else { theme::TEXT };
+    let remaining_color = if s.is_paid { theme::TEXT } else { theme::signed_color(-s.remaining_due) };
     let due_text = if overdue { format!("{} · {}", fmt_date(s.due_date), t.t("overdue")) } else { fmt_date(s.due_date) };
     let due_color = if overdue { theme::DANGER } else { theme::TEXT };
-    let available_negative = s.available.is_some_and(|a| a < Decimal::ZERO);
 
     let row = |label: &str, value: String, color: &str, bold: bool| {
         let weight = if bold { 700 } else { 500 };
@@ -234,7 +237,7 @@ fn CardStatement(wallet_id: String, #[props(default = false)] readonly: bool) ->
                     {row(t.t("Credit limit"), fmt_vnd(limit), theme::TEXT, false)}
                 }
                 if let Some(available) = s.available {
-                    {row(t.t("Available"), fmt_vnd(available), if available_negative { theme::DANGER } else { theme::TEXT }, false)}
+                    {row(t.t("Available"), fmt_vnd(available), theme::signed_color(available), false)}
                 }
                 if s.is_paid {
                     div {

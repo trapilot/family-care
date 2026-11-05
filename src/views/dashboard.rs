@@ -32,7 +32,6 @@ pub fn Dashboard() -> Element {
     let alerts    = use_signal(|| vec![]);
     // Expense per category of the selected month
     let by_category = use_signal(Vec::<ExpenseByCategoryItem>::new);
-    let mut show_all = use_signal(|| false);
     // Transaction list opened by tapping a number (income / expense / category)
     let mut drill = use_signal(|| None::<TypeDrill>);
     let ActiveTab(mut active_tab) = use_context::<ActiveTab>();
@@ -88,7 +87,7 @@ pub fn Dashboard() -> Element {
     let (year, month) = selected();
     let s = summary.read().clone();
     let balance = s.income - s.expense;
-    let balance_color = if balance < Decimal::ZERO { theme::DANGER } else { theme::TEXT };
+    let balance_color = theme::signed_on_platinum(balance);
 
     // Average tiles
     let days = {
@@ -107,8 +106,6 @@ pub fn Dashboard() -> Element {
     let day_avg = if days_elapsed == 0 { Decimal::ZERO } else { s.expense / Decimal::from(days_elapsed as u64) };
 
     let cat_items = by_category.read().clone();
-    let shown_cats = if show_all() { cat_items.len() } else { 3.min(cat_items.len()) };
-    let more_rotate = if show_all() { "rotate(180deg)" } else { "none" };
 
     rsx! {
         if let Some(d) = drill() {
@@ -129,44 +126,44 @@ pub fn Dashboard() -> Element {
                 // ── Hero money box ──
                 div {
                     class: "money-box",
-                    style: "background:#fff; color:{theme::TEXT}; border:1px solid {theme::BORDER}; border-top:4px solid {theme::PRIMARY}; padding:18px 16px;",
+                    style: "{theme::PLATINUM_BG} color:{theme::TEXT}; padding:16px;",
                     div {
                         style: "cursor:pointer;",
                         onclick: move |_| active_tab.set(Tab::Transactions),
-                        div { style: "font-size:13px; font-weight:600; color:{theme::TEXT_MUTED};", {t.t("Balance")} }
+                        div { style: "font-size:13px; font-weight:600; color:{theme::MUTED_ON_PLATINUM};", {t.t("Balance")} }
                         div {
                             style: "font-size:28px; font-weight:700; overflow-wrap:anywhere; color:{balance_color};",
                             "{fmt_vnd(balance)}"
                         }
                     }
-                    div { style: "border-top:1px solid {theme::BORDER}; margin:14px 0 12px;" }
+                    div { style: "border-top:1px solid rgba(31,33,51,.15); margin:14px 0 12px;" }
                     div {
                         style: "display:grid; grid-template-columns:1fr 1fr; gap:12px;",
                         div {
                             style: "cursor:pointer;",
                             onclick: move |_| drill.set(Some(TypeDrill::month(TransactionType::Income, year, month))),
                             div {
-                                style: "font-size:12px; font-weight:600; color:{theme::TEXT_MUTED}; display:flex; align-items:center; gap:2px;",
+                                style: "font-size:12px; font-weight:600; color:{theme::MUTED_ON_PLATINUM}; display:flex; align-items:center; gap:2px;",
                                 {t.t("Income")}
-                                Icon { name: IconName::ChevronRight, size: 14, color: theme::TEXT_MUTED.to_string() }
+                                Icon { name: IconName::ChevronRight, size: 14, color: theme::MUTED_ON_PLATINUM.to_string() }
                             }
-                            div { style: "font-size:17px; font-weight:700; color:{theme::POSITIVE}; overflow-wrap:anywhere;", "{fmt_vnd(s.income)}" }
+                            div { style: "font-size:17px; font-weight:700; color:{theme::signed_on_platinum(s.income)}; overflow-wrap:anywhere;", "{fmt_vnd(s.income)}" }
                         }
                         div {
                             style: "text-align:right; cursor:pointer;",
                             onclick: move |_| drill.set(Some(TypeDrill::month(TransactionType::Expense, year, month))),
                             div {
-                                style: "font-size:12px; font-weight:600; color:{theme::TEXT_MUTED}; display:flex; align-items:center; justify-content:flex-end; gap:2px;",
+                                style: "font-size:12px; font-weight:600; color:{theme::MUTED_ON_PLATINUM}; display:flex; align-items:center; justify-content:flex-end; gap:2px;",
                                 {t.t("Expense")}
-                                Icon { name: IconName::ChevronRight, size: 14, color: theme::TEXT_MUTED.to_string() }
+                                Icon { name: IconName::ChevronRight, size: 14, color: theme::MUTED_ON_PLATINUM.to_string() }
                             }
-                            div { style: "font-size:17px; font-weight:700; color:{theme::DANGER}; overflow-wrap:anywhere;", "{fmt_vnd(s.expense)}" }
+                            div { style: "font-size:17px; font-weight:700; color:{theme::signed_on_platinum(-s.expense)}; overflow-wrap:anywhere;", "{fmt_vnd(s.expense)}" }
                         }
                     }
                     div {
-                        style: "margin-top:12px; background:{theme::PRIMARY_SOFT}; color:{theme::PRIMARY}; padding:10px 12px; display:flex; justify-content:space-between; align-items:center; gap:8px; cursor:pointer;",
+                        style: "margin-top:12px; background:rgba(255,255,255,.5); color:{theme::TEXT}; padding:10px 12px; display:flex; justify-content:space-between; align-items:center; gap:8px; cursor:pointer;",
                         onclick: move |_| drill.set(Some(TypeDrill::month(TransactionType::Expense, year, month))),
-                        span { style: "font-size:13px; font-weight:600;", {t.t("Day (avg.)")} }
+                        span { style: "font-size:13px; font-weight:600;", {t.t("Average day")} }
                         span {
                             style: if day_avg.is_zero() { "font-size:16px; font-weight:700; opacity:.6;" } else { "font-size:16px; font-weight:700;" },
                             "{fmt_vnd(day_avg)}"
@@ -261,25 +258,14 @@ pub fn Dashboard() -> Element {
                         if cat_items.is_empty() {
                             div { style: "text-align:center; color:{theme::TEXT_MUTED}; font-size:14px; padding:12px 14px;", {t.t("No expenses this month")} }
                         }
-                        for (i, item) in cat_items.iter().take(shown_cats).enumerate() {
+                        for (i, item) in cat_items.iter().enumerate() {
                             div {
-                                style: if i == 0 { "padding:12px 14px; cursor:pointer;" } else { "padding:12px 14px; border-top:1px solid #e6e6ef; cursor:pointer;" },
+                                style: if i == 0 { "padding:8px 14px; cursor:pointer;" } else { "padding:8px 14px; border-top:1px solid #e6e6ef; cursor:pointer;" },
                                 onclick: {
                                     let category_id = item.category_id.clone();
                                     move |_| drill.set(Some(TypeDrill::category(category_id.clone(), year, month)))
                                 },
                                 CategoryRow { item: item.clone() }
-                            }
-                        }
-                        if cat_items.len() > 3 {
-                            button {
-                                style: "width:100%; border:none; border-top:1px solid #e6e6ef; background:transparent; color:{theme::PRIMARY}; font-size:14px; padding:12px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;",
-                                onclick: move |_| show_all.set(!show_all()),
-                                span { if show_all() { {t.t("Less")} } else { {t.t("More…")} } }
-                                span {
-                                    style: "display:inline-flex; transform:{more_rotate};",
-                                    Icon { name: IconName::ChevronDown, size: 16, color: theme::PRIMARY.to_string() }
-                                }
                             }
                         }
                     }
@@ -300,16 +286,16 @@ pub fn CategoryRow(item: ExpenseByCategoryItem) -> Element {
     let bar_color: String = color.chars().take(7).collect();
     rsx! {
         div {
-            style: "display:flex; align-items:center; gap:12px;",
-            IconCircle { icon: item.icon.clone(), fallback: IconName::Package, color, size: 40 }
+            style: "display:flex; align-items:center; gap:10px;",
+            IconCircle { icon: item.icon.clone(), fallback: IconName::Package, color, size: 30 }
             div { style: "flex:1; min-width:0;",
                 div { style: "display:flex; justify-content:space-between; gap:8px; align-items:baseline;",
-                    span { style: "font-size:15px; color:{theme::TEXT};", {t.tr(&item.category_name)} }
-                    span { style: "font-size:15px; color:{theme::TEXT}; white-space:nowrap;", "{fmt_vnd(item.amount)}" }
+                    span { style: "font-size:13px; color:{theme::TEXT};", {t.tr(&item.category_name)} }
+                    span { style: "font-size:13px; color:{theme::signed_color(-item.amount)}; white-space:nowrap;", "{fmt_vnd(item.amount)}" }
                 }
-                div { style: "display:flex; align-items:center; gap:8px; margin-top:4px;",
-                    span { style: "font-size:12px; color:{theme::TEXT_MUTED}; min-width:36px;", "{pct:.0}%" }
-                    div { style: "flex:1; height:4px; background:#eeeef4; overflow:hidden;",
+                div { style: "display:flex; align-items:center; gap:8px; margin-top:2px;",
+                    span { style: "font-size:11px; color:{theme::TEXT_MUTED}; min-width:36px;", "{pct:.0}%" }
+                    div { style: "flex:1; height:3px; background:#eeeef4; overflow:hidden;",
                         div { style: "height:100%; width:{pct}%; background:{bar_color};" }
                     }
                 }

@@ -1,4 +1,4 @@
-package com.example.familymoney.camera
+package vn.namdwb.tagi.camera
 
 import android.app.Activity
 import android.content.ClipData

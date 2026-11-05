@@ -114,13 +114,13 @@ pub fn WalletList(view: Signal<WalletView>) -> Element {
 
                 // ── Totals per money type ──
                 div {
-                    style: "{theme::CARD} display:flex; flex-direction:column; gap:8px;",
+                    style: "background:{theme::SUMMARY_BG}; color:{theme::TEXT}; padding:14px 16px; display:flex; flex-direction:column; gap:8px;",
                     for (cur, total) in rows {
                         div {
                             style: "display:flex; justify-content:space-between; align-items:baseline; gap:8px;",
-                            span { style: "font-size:13px; color:{theme::TEXT_MUTED};", "{currency_name(&t, &money_types.read(), &cur)}" }
+                            span { style: "font-size:13px; color:{theme::MUTED_ON_PLATINUM};", "{currency_name(&t, &money_types.read(), &cur)}" }
                             span {
-                                style: if total < Decimal::ZERO { "font-size:14px; font-weight:600; color:#e5527f; overflow-wrap:anywhere;" } else { "font-size:14px; font-weight:600; color:#17a589; overflow-wrap:anywhere;" },
+                                style: "font-size:18px; font-weight:700; color:{theme::signed_on_platinum(total)}; overflow-wrap:anywhere;",
                                 "{fmt_currency(total, &cur)}"
                             }
                         }
@@ -137,7 +137,7 @@ pub fn WalletList(view: Signal<WalletView>) -> Element {
                         let vnd_sum: Decimal = group.iter().map(|w| w.balance(&Currency::VND)).sum();
                         let has_other = group.iter().any(|w| w.balances.iter().any(|b| b.currency != Currency::VND && !b.balance.is_zero()));
                         let trailing = if vnd_sum.is_zero() && has_other { None } else { Some(fmt_vnd(vnd_sum)) };
-                        let trailing_color = if vnd_sum < Decimal::ZERO { theme::NEGATIVE } else { theme::POSITIVE };
+                        let trailing_color = theme::signed_color(vnd_sum);
                         rsx! {
                             div {
                                 style: "{theme::CARD} padding-top:4px; padding-bottom:4px;",
@@ -151,7 +151,7 @@ pub fn WalletList(view: Signal<WalletView>) -> Element {
                                 for (i, wallet) in group.iter().enumerate() {
                                     div {
                                         key: "{wallet.id}",
-                                        style: if i > 0 { "border-top:1px solid #e6e6ef; padding:10px 0;" } else { "padding:10px 0;" },
+                                        style: if i > 0 { "border-top:1px solid #e6e6ef; padding:6px 0;" } else { "padding:6px 0;" },
                                         WalletRow {
                                             wallet: wallet.clone(),
                                             card: card_summaries.read().get(&wallet.id).cloned(),
@@ -181,7 +181,7 @@ pub fn WalletList(view: Signal<WalletView>) -> Element {
                         for (i, wallet) in disabled.iter().enumerate() {
                             div {
                                 key: "{wallet.id}",
-                                style: if i > 0 { "opacity:.5; border-top:1px solid #e6e6ef; padding:10px 0;" } else { "opacity:.5; padding:10px 0;" },
+                                style: if i > 0 { "opacity:.5; border-top:1px solid #e6e6ef; padding:6px 0;" } else { "opacity:.5; padding:6px 0;" },
                                 WalletRow {
                                     wallet: wallet.clone(),
                                     card: None,
@@ -224,7 +224,7 @@ fn CreditSummary(
 ) -> Element {
     let t = use_i18n();
     let row = "display:flex; justify-content:space-between; align-items:baseline; gap:8px;";
-    let owed_color = if owed > Decimal::ZERO { theme::NEGATIVE } else { theme::TEXT };
+    let owed_color = theme::signed_color(-owed);
 
     rsx! {
         div {
@@ -243,7 +243,7 @@ fn CreditSummary(
                 div {
                     style: "{row}",
                     span { style: "font-size:13px; color:{theme::TEXT_MUTED};", {t.t("To pay this statement")} }
-                    span { style: "font-size:14px; font-weight:600; color:{theme::DANGER}; overflow-wrap:anywhere;", "{fmt_vnd(due_now)}" }
+                    span { style: "font-size:14px; font-weight:600; color:{theme::signed_color(-due_now)}; overflow-wrap:anywhere;", "{fmt_vnd(due_now)}" }
                 }
                 if let Some(d) = next_due {
                     {
@@ -270,7 +270,7 @@ fn CreditSummary(
                     style: "{row}",
                     span { style: "font-size:13px; color:{theme::TEXT_MUTED};", {t.t("Available")} }
                     {
-                        let color = if avail < Decimal::ZERO { theme::NEGATIVE } else { theme::POSITIVE };
+                        let color = theme::signed_color(avail);
                         rsx! { span { style: "font-size:14px; font-weight:600; color:{color}; overflow-wrap:anywhere;", "{fmt_vnd(avail)}" } }
                     }
                 }
@@ -300,27 +300,27 @@ fn WalletRow(
 
     rsx! {
         div {
-            style: "display:flex; align-items:center; gap:12px; cursor:pointer;",
+            style: "display:flex; align-items:center; gap:10px; cursor:pointer;",
             onclick: move |e| { on_tap.call(e); },
 
-            IconTile { icon: wallet.icon.clone(), fallback: type_icon, color: type_color.to_string(), size: 40, filled: true }
+            IconTile { icon: wallet.icon.clone(), fallback: type_icon, color: type_color.to_string(), size: 30, filled: true }
 
             div { style: "flex:1; min-width:0;",
-                div { style: "font-size:14px; color:{theme::TEXT}; overflow-wrap:anywhere;", "{wallet.name}" }
+                div { style: "font-size:13px; color:{theme::TEXT}; overflow-wrap:anywhere;", "{wallet.name}" }
                 if let Some(s) = card.as_ref().filter(|s| !s.is_paid && s.remaining_due > Decimal::ZERO) {
                     {
                         let overdue = chrono::Local::now().date_naive() > s.due_date;
                         let color = if overdue { theme::DANGER } else { theme::TEXT_MUTED };
                         rsx! {
-                            div { style: "font-size:12px; color:{color};", "{t.t(\"Due\")} {fmt_date(s.due_date)}" }
+                            div { style: "font-size:11px; color:{color};", "{t.t(\"Due\")} {fmt_date(s.due_date)}" }
                         }
                     }
                 }
                 for b in balances {
                     div {
                         style: {
-                            let size = if several { 13 } else { 15 };
-                            let color = if b.balance < Decimal::ZERO { theme::NEGATIVE } else { theme::POSITIVE };
+                            let size = if several { 12 } else { 13 };
+                            let color = theme::signed_color(b.balance);
                             format!("font-size:{size}px; color:{color}; overflow-wrap:anywhere;")
                         },
                         "{fmt_currency(b.balance, &b.currency)}"
@@ -328,14 +328,14 @@ fn WalletRow(
                 }
                 // The type is already the group header, so only the broker is shown here
                 if let Some(ref broker) = wallet.broker {
-                    div { style: "font-size:12px; color:{theme::TEXT_MUTED}; margin-top:1px;", "{broker}" }
+                    div { style: "font-size:11px; color:{theme::TEXT_MUTED}; margin-top:1px;", "{broker}" }
                 }
             }
 
             button {
                 style: "border:none; background:transparent; cursor:pointer; padding:4px; flex-shrink:0; display:flex;",
                 onclick: move |e| { e.stop_propagation(); on_edit.call(e); },
-                Icon { name: IconName::Pencil, size: 18, color: theme::TEXT_MUTED.to_string() }
+                Icon { name: IconName::Pencil, size: 16, color: theme::TEXT_MUTED.to_string() }
             }
         }
     }

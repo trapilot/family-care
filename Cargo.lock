@@ -1731,37 +1731,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7360491ce676a36bf9bb3c56c1aa791658183a54d2744120f27285738d90465a"
 
 [[package]]
-name = "family-money"
-version = "1.0.0"
-dependencies = [
- "base64",
- "bcrypt",
- "block2",
- "chrono",
- "dioxus",
- "dispatch2",
- "futures-util",
- "manganis",
- "objc2",
- "objc2-core-foundation",
- "objc2-foundation",
- "objc2-ui-kit",
- "objc2-user-notifications",
- "objc2-vision",
- "once_cell",
- "regex",
- "reqwest",
- "rusqlite",
- "rust_decimal",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "time",
- "tokio",
- "uuid",
-]
-
-[[package]]
 name = "fastrand"
 version = "2.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5288,6 +5257,37 @@ dependencies = [
  "pkg-config",
  "toml",
  "version-compare",
+]
+
+[[package]]
+name = "tagi"
+version = "1.0.0"
+dependencies = [
+ "base64",
+ "bcrypt",
+ "block2",
+ "chrono",
+ "dioxus",
+ "dispatch2",
+ "futures-util",
+ "manganis",
+ "objc2",
+ "objc2-core-foundation",
+ "objc2-foundation",
+ "objc2-ui-kit",
+ "objc2-user-notifications",
+ "objc2-vision",
+ "once_cell",
+ "regex",
+ "reqwest",
+ "rusqlite",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "time",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]
