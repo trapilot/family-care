@@ -24,6 +24,12 @@ case "$1" in
   *) usage ;;
 esac
 
+# Local signing settings (git-ignored); variables already in the environment win
+if [[ -z "${TAGI_KEYSTORE:-}" && -f .tagi-signing.env ]]; then
+  # shellcheck disable=SC1091
+  source .tagi-signing.env
+fi
+
 # Fail on bad signing settings before the long build
 if [[ -n "${TAGI_KEYSTORE:-}" ]]; then
   [[ -f "$TAGI_KEYSTORE" ]] || { echo "Error: keystore not found: $TAGI_KEYSTORE" >&2; exit 1; }
