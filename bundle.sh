@@ -58,6 +58,14 @@ dx bundle --platform android --release --package-types aab --out-dir "target/dx/
 RES_DIR="$GRADLE_DIR/app/src/main/res"
 cp -R android/launcher-icon/. "$RES_DIR/"
 sed -i '' 's|<string name="app_name">[^<]*</string>|<string name="app_name">'"$APP_NAME"'</string>|' "$RES_DIR/values/strings.xml"
+# dx 0.7 generates API 34; Google Play requires a newer target
+ANDROID_API=36
+GRADLE_FILE="$GRADLE_DIR/app/build.gradle.kts"
+sed -i '' -E "s/^( *)(compileSdk|targetSdk) = [0-9]+/\1\2 = $ANDROID_API/" "$GRADLE_FILE"
+if [[ "$(grep -cE "^ *(compileSdk|targetSdk) = $ANDROID_API$" "$GRADLE_FILE")" != 2 ]]; then
+  echo "Error: could not set API $ANDROID_API in $GRADLE_FILE" >&2
+  exit 1
+fi
 AAB_DIR="$GRADLE_DIR/app/build/outputs/bundle"
 rm -rf "$AAB_DIR"
 (cd "$GRADLE_DIR" && ./gradlew bundleRelease)
