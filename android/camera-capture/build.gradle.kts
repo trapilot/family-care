@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "vn.namdwb.tagi.camera"
+    namespace = "com.namdwb.tagi.camera"
     compileSdk = 34
     defaultConfig {
         minSdk = 24

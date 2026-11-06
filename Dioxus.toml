@@ -2,7 +2,7 @@
 
 # Unique app id (Android applicationId / iOS bundle id). Changing it makes a new app on the device.
 [bundle]
-identifier = "vn.namdwb.tagi"
+identifier = "com.namdwb.tagi"
 
 [web.app]
 

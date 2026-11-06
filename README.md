@@ -74,7 +74,7 @@ Example:
 
 * **Rust** (edition 2021) + **Dioxus 0.7** mobile renderer (WebView-based) for iOS and Android
 * Built with the Dioxus CLI (`dx` 0.7); `./build.sh` adds the launcher name, app icons and output files
-* App id `vn.namdwb.tagi` (`Dioxus.toml` `[bundle]`)
+* App id `com.namdwb.tagi` (`Dioxus.toml` `[bundle]`)
 * Icons from [Lucide](https://lucide.dev) (inline SVG), font *Be Vietnam Pro*
 * Built-in English / Vietnamese translations (`src/i18n.rs`)
 
@@ -405,7 +405,7 @@ tagi/
 ├── ios/Assets.xcassets      # iOS app icon
 ├── build.sh                 # build + name + icons + copy output
 ├── Cargo.toml
-└── Dioxus.toml              # app id vn.namdwb.tagi
+└── Dioxus.toml              # app id com.namdwb.tagi
 ```
 
 ---

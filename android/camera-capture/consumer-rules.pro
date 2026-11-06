@@ -1,2 +1,2 @@
 # Loaded by name from Rust over JNI
--keep class vn.namdwb.tagi.camera.CameraCapture { *; }
+-keep class com.namdwb.tagi.camera.CameraCapture { *; }

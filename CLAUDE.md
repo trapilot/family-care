@@ -39,10 +39,10 @@ Dioxus 0.7 mobile app (iOS + Android). Dioxus API conventions are in AGENTS.md.
 - Build script: `./build.sh <android|ios> [release|debug]` builds (release by default; `--debug` still works) and copies the result to `$OUT_DIR` (default: the repo root) as `tagi-<mode>.apk` / `.app`.
   - Android: sets `JAVA_HOME` / `ANDROID_HOME` / `ANDROID_NDK_HOME` automatically if unset.
   - Sets the home-screen name to `APP_NAME` ("TaGi"); dx would otherwise show "TaGi" (from the crate name).
-- App name **TaGi**, app id `vn.namdwb.tagi` (Dioxus.toml `[bundle] identifier`). Don't change the id: it is the app's
+- App name **TaGi**, app id `com.namdwb.tagi` (Dioxus.toml `[bundle] identifier`). Don't change the id: it is the app's
   identity on the stores and on the device (a new id = a new app without the old data). Crate / DB file names stay `tagi`.
   - Android: overlays the launcher icon from `android/launcher-icon/` (dx 0.7 ignores custom icons) and re-runs Gradle.
   - iOS: compiles the app icon from `ios/Assets.xcassets` into the .app with `actool` (dx 0.7 adds none).
   - Prints `Built: <path>` on success; exits 1 with usage on a missing/invalid platform.
-- `adb` is at `~/Library/Android/sdk/platform-tools/adb`; package `vn.namdwb.tagi`, activity `dev.dioxus.main.MainActivity`.
+- `adb` is at `~/Library/Android/sdk/platform-tools/adb`; package `com.namdwb.tagi`, activity `dev.dioxus.main.MainActivity`.
 - Rust panics/stdout show in logcat under `RustStdoutStderr`; native camera/OCR logs under `FFCamera`.

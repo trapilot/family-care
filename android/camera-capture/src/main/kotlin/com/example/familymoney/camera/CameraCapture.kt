@@ -1,4 +1,4 @@
-package vn.namdwb.tagi.camera
+package com.namdwb.tagi.camera
 
 import android.app.Activity
 import android.content.ClipData
