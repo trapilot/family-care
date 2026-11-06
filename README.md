@@ -204,6 +204,15 @@ OUT_DIR=dist ./build.sh android
 
 `build.sh` runs `dx build`, then sets the home-screen name (TaGi) and the app icons, which `dx` 0.7 does not apply on its own. Use it instead of a bare `dx build` for anything you install.
 
+Store bundle for Google Play (`bundle.sh` adds the same name and icons as `build.sh`, then signs):
+
+```sh
+export TAGI_KEYSTORE=/path/to/upload.jks TAGI_KEYSTORE_PASSWORD=... TAGI_KEY_ALIAS=upload
+./bundle.sh android           # signed .aab -> ./tagi-release.aab
+```
+
+Without `TAGI_KEYSTORE` it writes `./tagi-release-unsigned.aab`, which Google Play rejects. iOS `.ipa` bundles are not set up yet.
+
 ### 6. Run the tests
 
 ```sh
@@ -404,6 +413,7 @@ tagi/
 │   └── launcher-icon/       # Android launcher icon
 ├── ios/Assets.xcassets      # iOS app icon
 ├── build.sh                 # build + name + icons + copy output
+├── bundle.sh                # store bundle (.aab): name + icons + signing
 ├── Cargo.toml
 └── Dioxus.toml              # app id com.namdwb.tagi
 ```

@@ -10,6 +10,11 @@
 *.db
 *.db-*
 
-# build.sh output
+# build.sh / bundle.sh output
 /tagi-*.apk
 /tagi-*.app
+/tagi-*.aab
+
+# Signing keys
+*.jks
+*.keystore
