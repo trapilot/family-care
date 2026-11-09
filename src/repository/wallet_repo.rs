@@ -5,6 +5,7 @@ use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::error::{AppError, Result};
+use crate::repository::SettingsRepo;
 use crate::models::{
     f64_to_decimal,
     wallet::{to_sqlite_err, NewWallet, Wallet},
@@ -162,11 +163,15 @@ impl WalletRepo {
             "UPDATE wallets SET is_active = ?1 WHERE id = ?2",
             rusqlite::params![active as i32, id],
         )?;
+        if !active {
+            SettingsRepo::clear_default_wallet_if(conn, id)?;
+        }
         Ok(())
     }
 
     pub fn soft_delete(conn: &Connection, id: &str) -> Result<()> {
         conn.execute("UPDATE wallets SET is_active = 0 WHERE id = ?1", [id])?;
+        SettingsRepo::clear_default_wallet_if(conn, id)?;
         Ok(())
     }
 
@@ -199,7 +204,11 @@ impl WalletRepo {
             .and_then(|_| conn.execute("DELETE FROM credit_cards WHERE wallet_id = ?1", [id]))
             .and_then(|_| conn.execute("DELETE FROM wallets WHERE id = ?1", [id]));
         match result {
-            Ok(_)  => { conn.execute_batch("COMMIT")?; Ok(()) }
+            Ok(_)  => {
+                conn.execute_batch("COMMIT")?;
+                SettingsRepo::clear_default_wallet_if(conn, id)?;
+                Ok(())
+            }
             Err(e) => { let _ = conn.execute_batch("ROLLBACK"); Err(e.into()) }
         }
     }

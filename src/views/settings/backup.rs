@@ -72,7 +72,10 @@ pub struct BackupData {
 }
 
 /// Settings that travel with a backup. Never add `pin_hash` here.
-const BACKUP_SETTING_KEYS: [&str; 3] = ["language", "reminder_interval_hours", "reminder_start_time"];
+const BACKUP_SETTING_KEYS: [&str; 5] = [
+    "language", "reminder_interval_hours", "reminder_start_time",
+    "default_wallet_id", "default_category_id",
+];
 
 /// Row of the `reminders` table, stored as-is
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

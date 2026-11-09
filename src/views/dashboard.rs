@@ -11,7 +11,8 @@ use crate::services::report_service::ExpenseByCategoryItem;
 use crate::services::{ReminderService, ReportService};
 use crate::views::fmt_vnd;
 use crate::views::icons::{Icon, IconName};
-use crate::views::ui::{AppHeader, IconCircle, IconText, SectionTitle};
+use crate::views::ui::{AppHeader, Fab, IconCircle, IconText, SectionTitle};
+use crate::views::transactions::{form::TransactionForm, TxnView};
 use crate::views::theme;
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
@@ -34,6 +35,10 @@ pub fn Dashboard() -> Element {
     let by_category = use_signal(Vec::<ExpenseByCategoryItem>::new);
     // Transaction list opened by tapping a number (income / expense / category)
     let mut drill = use_signal(|| None::<TypeDrill>);
+    // Add-transaction form opened by the + button; the overview stays mounted behind it
+    let mut txn_view = use_signal(|| TxnView::List);
+    let mut reload = use_signal(|| 0u32);
+    let mut was_open = use_signal(|| false);
     let ActiveTab(mut active_tab) = use_context::<ActiveTab>();
     // Reminders due today, as (id, title, body, done)
     let mut due_today = use_signal(Vec::<(String, String, String, bool)>::new);
@@ -69,6 +74,8 @@ pub fn Dashboard() -> Element {
         let mut load_due = load_due.clone();
         move || {
             let (year, month) = selected();
+            // Re-run after the add form closes
+            let _ = reload();
             load_due(t.lang());
             state.with_conn(|conn| {
                 if let Ok(list) = ReportService::expense_by_category(conn, year, month) {
@@ -81,6 +88,16 @@ pub fn Dashboard() -> Element {
                     alerts.set(a);
                 }
             });
+        }
+    });
+
+    // When the add form closes, reload the overview (also harmless after Back without saving)
+    use_effect(move || {
+        if txn_view() == TxnView::Add {
+            was_open.set(true);
+        } else if *was_open.peek() {
+            was_open.set(false);
+            reload += 1;
         }
     });
 
@@ -111,9 +128,12 @@ pub fn Dashboard() -> Element {
         if let Some(d) = drill() {
             TypeTransactions { drill: d, on_back: move |_| drill.set(None) }
         }
+        if *txn_view.read() == TxnView::Add {
+            TransactionForm { view: txn_view, editing: None }
+        }
         // Kept mounted while the list is open, so Back returns to the same scroll position / state
         div {
-            style: if drill.read().is_some() { "display:none;" } else { "display:flex; flex-direction:column;" },
+            style: if drill.read().is_some() || *txn_view.read() != TxnView::List { "display:none;" } else { "display:flex; flex-direction:column;" },
             AppHeader {
                 title: t.t("Overview").to_string(),
                 month: Some((year, month)),
@@ -270,6 +290,9 @@ pub fn Dashboard() -> Element {
                         }
                     }
                 }
+
+                // Same place as on the Transactions list: inside the padded column
+                Fab { onclick: move |_| txn_view.set(TxnView::Add) }
             }
         }
     }

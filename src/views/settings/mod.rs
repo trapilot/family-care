@@ -1,12 +1,14 @@
 pub mod backup;
 pub mod categories;
 pub mod currencies;
+pub mod defaults;
 pub mod reminders;
 
 use dioxus::prelude::*;
 use crate::i18n::use_i18n;
 use categories::CategoriesSettings;
 use currencies::CurrenciesSettings;
+use defaults::DefaultsSettings;
 use backup::BackupSettings;
 use reminders::RemindersSettings;
 use crate::app::AppState;
@@ -17,7 +19,7 @@ use crate::views::theme;
 use crate::views::ui::{IconText, ScreenHeader, UnderlineTabs};
 
 #[derive(Clone, PartialEq)]
-enum SettingsTab { Categories, Currencies, Reminders, Backup }
+enum SettingsTab { Defaults, Categories, Currencies, Reminders, Backup }
 
 #[component]
 pub fn Settings() -> Element {
@@ -31,22 +33,25 @@ pub fn Settings() -> Element {
             ScreenHeader { title: t.t("Settings").to_string(), action: rsx! { LanguageSelect {} } }
             UnderlineTabs {
                 tabs: vec![
+                    (t.t("Defaults").to_string(), None),
                     (t.t("Categories").to_string(), None),
                     (t.t("Money types").to_string(), None),
                     (t.t("Reminders").to_string(), None),
                     (t.t("Backup").to_string(), None),
                 ],
                 active: match *tab.read() {
-                    SettingsTab::Categories => 0,
-                    SettingsTab::Currencies => 1,
-                    SettingsTab::Reminders => 2,
-                    SettingsTab::Backup => 3,
+                    SettingsTab::Defaults => 0,
+                    SettingsTab::Categories => 1,
+                    SettingsTab::Currencies => 2,
+                    SettingsTab::Reminders => 3,
+                    SettingsTab::Backup => 4,
                 },
                 on_select: move |i: usize| {
                     tab.set(match i {
-                        0 => SettingsTab::Categories,
-                        1 => SettingsTab::Currencies,
-                        2 => SettingsTab::Reminders,
+                        0 => SettingsTab::Defaults,
+                        1 => SettingsTab::Categories,
+                        2 => SettingsTab::Currencies,
+                        3 => SettingsTab::Reminders,
                         _ => SettingsTab::Backup,
                     });
                 },
@@ -55,6 +60,7 @@ pub fn Settings() -> Element {
             div {
                 style: "flex:1; overflow-y:auto; padding:16px;",
                 match tab.read().clone() {
+                    SettingsTab::Defaults   => rsx! { DefaultsSettings {} },
                     SettingsTab::Categories => rsx! { CategoriesSettings {} },
                     SettingsTab::Currencies => rsx! { CurrenciesSettings {} },
                     SettingsTab::Reminders  => rsx! { RemindersSettings {} },

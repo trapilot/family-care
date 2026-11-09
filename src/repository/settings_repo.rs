@@ -11,6 +11,8 @@ impl SettingsRepo {
     const KEY_REMINDER_INTERVAL: &'static str = "reminder_interval_hours";
     const KEY_REMINDER_START: &'static str = "reminder_start_time";
     const KEY_DEFAULT_WALLET: &'static str = "default_wallet_created";
+    const KEY_DEFAULT_WALLET_ID: &'static str = "default_wallet_id";
+    const KEY_DEFAULT_CATEGORY_ID: &'static str = "default_category_id";
 
     fn get(conn: &Connection, key: &str) -> Result<Option<String>> {
         Ok(conn.query_row(
@@ -35,6 +37,56 @@ impl SettingsRepo {
 
     pub fn set_default_wallet_created(conn: &Connection) -> Result<()> {
         Self::set(conn, Self::KEY_DEFAULT_WALLET, "1")
+    }
+
+    fn get_non_empty(conn: &Connection, key: &str) -> Result<Option<String>> {
+        Ok(Self::get(conn, key)?.filter(|v| !v.is_empty()))
+    }
+
+    fn set_or_clear(conn: &Connection, key: &str, id: Option<&str>) -> Result<()> {
+        match id.filter(|v| !v.is_empty()) {
+            Some(v) => Self::set(conn, key, v),
+            None => {
+                conn.execute("DELETE FROM settings WHERE key = ?1", rusqlite::params![key])?;
+                Ok(())
+            }
+        }
+    }
+
+    /// Wallet pre-selected in the new-transaction form (None when unset).
+    pub fn get_default_wallet_id(conn: &Connection) -> Result<Option<String>> {
+        Self::get_non_empty(conn, Self::KEY_DEFAULT_WALLET_ID)
+    }
+
+    pub fn set_default_wallet_id(conn: &Connection, id: Option<&str>) -> Result<()> {
+        Self::set_or_clear(conn, Self::KEY_DEFAULT_WALLET_ID, id)
+    }
+
+    /// Category pre-selected in the new-transaction form (None when unset).
+    pub fn get_default_category_id(conn: &Connection) -> Result<Option<String>> {
+        Self::get_non_empty(conn, Self::KEY_DEFAULT_CATEGORY_ID)
+    }
+
+    pub fn set_default_category_id(conn: &Connection, id: Option<&str>) -> Result<()> {
+        Self::set_or_clear(conn, Self::KEY_DEFAULT_CATEGORY_ID, id)
+    }
+
+    /// Forget the default wallet when it is the given wallet (it was deleted or hidden).
+    pub fn clear_default_wallet_if(conn: &Connection, wallet_id: &str) -> Result<()> {
+        conn.execute(
+            "DELETE FROM settings WHERE key = ?1 AND value = ?2",
+            rusqlite::params![Self::KEY_DEFAULT_WALLET_ID, wallet_id],
+        )?;
+        Ok(())
+    }
+
+    /// Forget the default category when it is the given category (it was deleted).
+    pub fn clear_default_category_if(conn: &Connection, category_id: &str) -> Result<()> {
+        conn.execute(
+            "DELETE FROM settings WHERE key = ?1 AND value = ?2",
+            rusqlite::params![Self::KEY_DEFAULT_CATEGORY_ID, category_id],
+        )?;
+        Ok(())
     }
 
     /// UI language code ("en" / "vi").

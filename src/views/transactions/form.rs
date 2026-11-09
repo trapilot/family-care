@@ -8,7 +8,7 @@ use crate::app::AppState;
 use crate::models::{
     Currency, CurrencyInfo, IncomeType, NewReminder, NewTransaction, RepeatUnit, Transaction, TransactionType,
 };
-use crate::repository::{CategoryRepo, CurrencyRepo, HoldingRepo, ReminderRepo, TxnImageRepo, WalletRepo};
+use crate::repository::{CategoryRepo, CurrencyRepo, HoldingRepo, ReminderRepo, SettingsRepo, TransactionRepo, TxnImageRepo, WalletRepo};
 use crate::services::statement::ocr;
 use crate::services::{receipt, ReminderService, TransactionService};
 use crate::views::icons::{Icon, IconName};
@@ -177,18 +177,68 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
         let mut categories = categories.clone();
         let mut holdings   = holdings.clone();
         let mut money_types = money_types;
+        let is_new = editing.is_none();
+        let mut wallet_id = wallet_id;
+        let mut category_id = category_id;
         move || {
             state.with_conn(|conn| {
                 if let Ok(list) = CurrencyRepo::list(conn)        { money_types.set(list); }
-                if let Ok(ws) = WalletRepo::list_active(conn)    { wallets.set(ws); }
+                if let Ok(ws) = WalletRepo::list_active(conn)    {
+                    // Pre-select the default wallet of a new transaction (only if it is still offered)
+                    if is_new && wallet_id.peek().is_empty() {
+                        if let Ok(Some(id)) = SettingsRepo::get_default_wallet_id(conn) {
+                            if ws.iter().any(|w| w.id == id) { wallet_id.set(id); }
+                        }
+                    }
+                    wallets.set(ws);
+                }
                 if let Ok(cards) = crate::repository::CreditCardRepo::list(conn) {
                     card_limits.set(cards.into_iter().map(|c| (c.wallet_id, c.credit_limit)).collect());
                 }
-                if let Ok(cs) = CategoryRepo::list(conn)          { categories.set(cs); }
+                if let Ok(cs) = CategoryRepo::list(conn)          {
+                    if is_new && category_id.peek().is_empty() {
+                        if let Ok(Some(id)) = SettingsRepo::get_default_category_id(conn) {
+                            if cs.iter().any(|c| c.id == id) { category_id.set(id); }
+                        }
+                    }
+                    categories.set(cs);
+                }
                 if let Ok(hs) = HoldingRepo::list_all(conn) { holdings.set(hs); }
             });
         }
     });
+
+    // ── Note suggestions: most used notes of this type (and category, for expenses) ──
+    let mut note_pool = use_signal(Vec::<String>::new);
+    use_effect({
+        let state = state.clone();
+        move || {
+            let kind = txn_type();
+            let cat = category_id();
+            state.with_conn(|conn| {
+                let mut pool = Vec::<String>::new();
+                if kind == TransactionType::Expense && !cat.is_empty() {
+                    pool = TransactionRepo::top_notes(conn, &kind, Some(&cat), 20).unwrap_or_default();
+                }
+                for n in TransactionRepo::top_notes(conn, &kind, None, 20).unwrap_or_default() {
+                    if !pool.contains(&n) { pool.push(n); }
+                }
+                note_pool.set(pool);
+            });
+        }
+    });
+    // Chips under the note input: the top ones, or those matching what is typed
+    let note_chips: Vec<String> = {
+        let typed = note.read().trim().to_lowercase();
+        note_pool.read().iter()
+            .filter(|n| {
+                let l = n.to_lowercase();
+                typed.is_empty() || (l.contains(&typed) && l != typed)
+            })
+            .take(8)
+            .cloned()
+            .collect()
+    };
 
     // ── Submit ──
     let submit = {
@@ -693,6 +743,26 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
                 placeholder: t.t("Add a note…"),
                 value: "{note.read()}",
                 oninput: move |e| { note.set(e.value()); },
+            }
+            if !note_chips.is_empty() {
+                div {
+                    "data-noswipe": "true",
+                    style: "display:flex; flex-wrap:wrap; gap:6px; align-items:center;",
+                    span { style: "font-size:12px; color:{theme::TEXT_MUTED};", {t.t("Suggestions:")} }
+                    for n in note_chips {
+                        {
+                            let value = n.clone();
+                            rsx! {
+                                button {
+                                    key: "{n}",
+                                    style: "border:none; border-radius:999px; background:{theme::PRIMARY_SOFT}; color:{theme::PRIMARY}; font-size:12px; font-weight:600; padding:4px 10px; cursor:pointer; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;",
+                                    onclick: move |_| note.set(value.clone()),
+                                    "{n}"
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             // ── Photos ──

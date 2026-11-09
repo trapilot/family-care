@@ -152,6 +152,13 @@ fn code_label(code: &str) -> Option<&'static str> {
 fn vi(en: &str) -> Option<&'static str> {
     Some(match en {
         "Loading..."                           => "Đang tải...",
+        "Defaults"                             => "Mặc định",
+        "New transaction defaults"             => "Mặc định khi thêm giao dịch",
+        "Filled in automatically when you add a transaction." => "Tự điền khi bạn thêm giao dịch mới.",
+        "Default wallet"                       => "Ví mặc định",
+        "Default category"                     => "Danh mục mặc định",
+        "None"                                 => "Không",
+        "Suggestions:"                         => "Gợi ý:",
         "Overview"                             => "Tổng quan",
         "Txns"                                 => "Giao dịch",
         "Wallets"                              => "Ví",

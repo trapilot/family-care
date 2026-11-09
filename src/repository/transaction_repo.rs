@@ -195,6 +195,29 @@ impl TransactionRepo {
         Ok(())
     }
 
+    /// Most used notes, most frequent first (ties: most recently used first).
+    pub fn top_notes(
+        conn: &Connection,
+        txn_type: &TransactionType,
+        category_id: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<String>> {
+        let mut stmt = conn.prepare(
+            "SELECT TRIM(note) AS n, COUNT(*) AS c, MAX(txn_date) AS last
+             FROM transactions
+             WHERE txn_type = ?1 AND note IS NOT NULL AND TRIM(note) <> ''
+               AND (?2 IS NULL OR category_id = ?2)
+             GROUP BY n
+             ORDER BY c DESC, last DESC
+             LIMIT ?3",
+        )?;
+        let rows = stmt.query_map(
+            rusqlite::params![txn_type.to_string(), category_id, limit as i64],
+            |row| row.get::<_, String>(0),
+        )?;
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+    }
+
     pub fn list_all(conn: &Connection) -> Result<Vec<Transaction>> {
         Self::list(conn, &TxnFilter::default())
     }
@@ -259,6 +282,44 @@ mod tests {
                    vec![TransactionType::Income, TransactionType::Transfer]);
         assert_eq!(types(vec![TransactionType::Expense]), vec![TransactionType::Expense]);
         assert_eq!(types(vec![]).len(), 5, "empty = no type filter (3 above + 2 opening balances)");
+    }
+
+    #[test]
+    fn top_notes_ranks_by_frequency_and_filters() {
+        let conn = Connection::open_in_memory().unwrap();
+        crate::db::migrations::run(&conn).unwrap();
+        CategoryRepo::seed_defaults(&conn).unwrap();
+        let wallet = WalletRepo::create(&conn, &NewWallet {
+            name: "W".into(), wallet_type: WalletType::Bank, broker: None, icon: None, color: None, sort_order: 0,
+        }).unwrap().id;
+        TransactionService::execute(&conn, &NewTransaction::opening_balance(&wallet, Decimal::from(1_000_000), Currency::VND, 0)).unwrap();
+        let cats = CategoryRepo::list(&conn).unwrap();
+        let (c1, c2) = (cats[0].id.clone(), cats[1].id.clone());
+        let amount = Decimal::from(1_000);
+
+        let expense = |cat: &str, note: Option<&str>, ts: i64| {
+            let mut n = NewTransaction::expense(&wallet, amount, Currency::VND, cat, ts);
+            n.note = note.map(|s| s.to_string());
+            TransactionService::execute(&conn, &n).unwrap();
+        };
+        expense(&c1, Some("coffee"), 1);
+        expense(&c1, Some(" coffee "), 2);
+        expense(&c1, Some("lunch"), 3);
+        expense(&c2, Some("taxi"), 4);
+        expense(&c1, Some("   "), 5);
+        expense(&c1, None, 6);
+        let mut inc = NewTransaction::income(&wallet, amount, Currency::VND, IncomeType::Salary, 7);
+        inc.note = Some("salary".into());
+        TransactionService::execute(&conn, &inc).unwrap();
+
+        let all = TransactionRepo::top_notes(&conn, &TransactionType::Expense, None, 10).unwrap();
+        assert_eq!(all, ["coffee", "taxi", "lunch"].map(String::from).to_vec());
+        let in_c1 = TransactionRepo::top_notes(&conn, &TransactionType::Expense, Some(&c1), 10).unwrap();
+        assert_eq!(in_c1, vec!["coffee".to_string(), "lunch".to_string()]);
+        let limited = TransactionRepo::top_notes(&conn, &TransactionType::Expense, None, 1).unwrap();
+        assert_eq!(limited, vec!["coffee".to_string()]);
+        let income = TransactionRepo::top_notes(&conn, &TransactionType::Income, None, 10).unwrap();
+        assert_eq!(income, vec!["salary".to_string()]);
     }
 
     #[test]

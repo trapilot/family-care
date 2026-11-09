@@ -2,6 +2,7 @@ use rusqlite::Connection;
 use uuid::Uuid;
 
 use crate::error::{AppError, Result};
+use crate::repository::SettingsRepo;
 use crate::models::{
     category::{Category, NewCategory},
     decimal_to_f64,
@@ -137,6 +138,7 @@ impl CategoryRepo {
         if affected == 0 {
             return Err(AppError::NotFound(format!("category '{id}' (or it is a system category)")));
         }
+        SettingsRepo::clear_default_category_if(conn, id)?;
         Ok(())
     }
 
