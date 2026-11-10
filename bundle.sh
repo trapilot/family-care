@@ -5,6 +5,7 @@ set -euo pipefail
 usage() {
   echo "Usage: $0 android" >&2
   echo "  Env: OUT_DIR (default: repo root)" >&2
+  echo "  Env: TAGI_VERSION_CODE (default: last code in android/version-code + 1)" >&2
   echo "  Signing (required for Google Play; unsigned without them):" >&2
   echo "    TAGI_KEYSTORE, TAGI_KEYSTORE_PASSWORD, TAGI_KEY_ALIAS, TAGI_KEY_PASSWORD (default: keystore password)" >&2
   exit 1
@@ -43,6 +44,25 @@ OUT_DIR="${OUT_DIR:-$PWD}"
 APP_NAME="TaGi"
 mkdir -p "$OUT_DIR"
 
+# Google Play needs a strictly higher versionCode for every upload; validate before the long build
+VERSION_FILE="android/version-code"
+if [[ ! -f "$VERSION_FILE" ]]; then
+  echo "Error: $VERSION_FILE not found" >&2
+  exit 1
+fi
+LAST_CODE="$(tr -d '[:space:]' < "$VERSION_FILE")"
+if [[ ! "$LAST_CODE" =~ ^[0-9]+$ ]] || (( 10#$LAST_CODE <= 0 )); then
+  echo "Error: $VERSION_FILE must contain a positive integer, got: $LAST_CODE" >&2
+  exit 1
+fi
+LAST_CODE=$((10#$LAST_CODE))
+VERSION_CODE="${TAGI_VERSION_CODE:-$((LAST_CODE + 1))}"
+if [[ ! "$VERSION_CODE" =~ ^[0-9]+$ ]] || (( 10#$VERSION_CODE <= LAST_CODE )); then
+  echo "Error: versionCode '$VERSION_CODE' must be an integer greater than $LAST_CODE (Google Play needs a higher code than the last upload)" >&2
+  exit 1
+fi
+VERSION_CODE=$((10#$VERSION_CODE))
+
 # Toolchain env (only if not already set)
 export JAVA_HOME="${JAVA_HOME:-/Applications/Android Studio.app/Contents/jbr/Contents/Home}"
 export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
@@ -71,6 +91,11 @@ APP_ID="com.namdwb.tagi"
 sed -i '' -E 's|^( *)applicationId *= *"[^"]*"|\1applicationId = "'"$APP_ID"'"|' "$GRADLE_FILE"
 if ! grep -qE "^ *applicationId = \"$APP_ID\"$" "$GRADLE_FILE"; then
   echo "Error: could not set applicationId $APP_ID in $GRADLE_FILE" >&2
+  exit 1
+fi
+sed -i '' -E "s/^( *)versionCode = [0-9]+/\\1versionCode = $VERSION_CODE/" "$GRADLE_FILE"
+if ! grep -qE "^ *versionCode = $VERSION_CODE$" "$GRADLE_FILE"; then
+  echo "Error: could not set versionCode $VERSION_CODE in $GRADLE_FILE" >&2
   exit 1
 fi
 AAB_DIR="$GRADLE_DIR/app/build/outputs/bundle"
@@ -111,8 +136,10 @@ if [[ -n "${TAGI_KEYSTORE:-}" ]]; then
     rm -f "$DEST"
     exit 1
   fi
+  # Only a signed, verified bundle is uploadable, so only then record the code
+  echo "$VERSION_CODE" > "$VERSION_FILE"
 else
   echo "Warning: unsigned bundle (TAGI_KEYSTORE not set); Google Play will reject it." >&2
 fi
 
-echo "Built: $DEST"
+echo "Built: $DEST (versionCode $VERSION_CODE)"
