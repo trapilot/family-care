@@ -36,9 +36,12 @@ Dioxus 0.7 mobile app (iOS + Android). Dioxus API conventions are in AGENTS.md.
   export ANDROID_NDK_HOME=$(ls -d ~/Library/Android/sdk/ndk/* | tail -1)
   ```
 - Build: `dx build --platform android`. APK: `target/dx/tagi/debug/android/app/app/build/outputs/apk/debug/app-debug.apk`.
-- Build script: `./build.sh <android|ios> [release|debug]` builds (release by default; `--debug` still works) and copies the result to `$OUT_DIR` (default: the repo root) as `tagi-<mode>.apk` / `.app`.
+- Build script: `./build.sh <android|ios> [release|debug] [dev|prod]` builds (release by default; `--debug` still works) and copies the result to `$OUT_DIR` (default: the repo root).
+  - Env `dev` (default): Android id `com.namdwb.tagi.dev`, name "TaGi Dev", output `tagi-dev-<mode>.apk`; installs next to the Play Store app.
+  - Env `prod`: id `com.namdwb.tagi`, name "TaGi", output `tagi-<mode>.apk` / `.app`. `bundle.sh` always builds prod.
+  - adb for the dev app uses package `com.namdwb.tagi.dev`.
   - Android: sets `JAVA_HOME` / `ANDROID_HOME` / `ANDROID_NDK_HOME` automatically if unset.
-  - Sets the home-screen name to `APP_NAME` ("TaGi"); dx would otherwise show "TaGi" (from the crate name).
+  - Sets the home-screen name to `APP_NAME` ("TaGi" / "TaGi Dev"); dx would otherwise show "TaGi" (from the crate name).
 - App name **TaGi**, app id `com.namdwb.tagi` (Dioxus.toml `[bundle] identifier`). Don't change the id: it is the app's
   identity on the stores and on the device (a new id = a new app without the old data). Crate / DB file names stay `tagi`.
   - Android: overlays the launcher icon from `android/launcher-icon/` (dx 0.7 ignores custom icons) and re-runs Gradle.

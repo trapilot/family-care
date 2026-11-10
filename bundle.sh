@@ -66,6 +66,13 @@ if [[ "$(grep -cE "^ *(compileSdk|targetSdk) = $ANDROID_API$" "$GRADLE_FILE")" !
   echo "Error: could not set API $ANDROID_API in $GRADLE_FILE" >&2
   exit 1
 fi
+# Store bundles are always prod; the Gradle dir is shared with `build.sh dev`
+APP_ID="com.namdwb.tagi"
+sed -i '' -E 's|^( *)applicationId *= *"[^"]*"|\1applicationId = "'"$APP_ID"'"|' "$GRADLE_FILE"
+if ! grep -qE "^ *applicationId = \"$APP_ID\"$" "$GRADLE_FILE"; then
+  echo "Error: could not set applicationId $APP_ID in $GRADLE_FILE" >&2
+  exit 1
+fi
 AAB_DIR="$GRADLE_DIR/app/build/outputs/bundle"
 rm -rf "$AAB_DIR"
 (cd "$GRADLE_DIR" && ./gradlew bundleRelease)
