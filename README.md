@@ -197,7 +197,8 @@ dx serve --platform android
 ### 5. Build an installable app
 
 ```sh
-./build.sh android            # release APK  -> ./tagi-release.apk
+./build.sh android
+./build.sh android prod
 ./build.sh ios debug          # debug .app   -> ./tagi-debug.app
 OUT_DIR=dist ./build.sh android
 ```
@@ -445,6 +446,33 @@ Settings → Backup exports everything to a portable JSON file named `YYYYMMDD_H
 ```
 
 Photos are embedded as base64. Only safe settings travel with a backup (language and reminder timing); the PIN is never included. Older backups without the newer sections still import.
+
+---
+
+## Release Notes
+
+### 2026-11-10
+
+Google Play (vi):
+
+```text
+<vi>
+Phiên bản đầu tiên của TaGi!
+
+Quản lý thu chi, ví tiền và chuyển khoản.
+Theo dõi đầu tư cổ phiếu, tiền mã hóa.
+Quản lý tài chính gia đình và thành viên.
+Nhập sao kê Techcombank bằng OCR.
+Quản lý ngân sách, hóa đơn và nhắc nhở.
+Hỗ trợ VND, USD và GOLD.
+Báo cáo thu chi và hiệu quả đầu tư.
+Sao lưu và khôi phục dữ liệu dễ dàng.
+
+Ưu tiên quyền riêng tư: dữ liệu được lưu trên thiết bị, bảo vệ bằng mã PIN, không cần tài khoản hay đồng bộ đám mây.
+
+Cảm ơn bạn đã trải nghiệm TaGi!
+</vi>
+```
 
 ---
 
