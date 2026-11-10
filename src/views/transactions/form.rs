@@ -12,7 +12,7 @@ use crate::repository::{CategoryRepo, CurrencyRepo, HoldingRepo, ReminderRepo, S
 use crate::services::statement::ocr;
 use crate::services::{receipt, ReminderService, TransactionService};
 use crate::views::icons::{Icon, IconName};
-use crate::views::ui::{txn_type_look, DateInput, IconCircle, IconText, ScreenHeader};
+use crate::views::ui::{txn_type_look, CategoryGrid, DateInput, IconText, ScreenHeader};
 use crate::views::{currency_name, date_str_add, date_str_to_ts, fmt_currency, fmt_number, fmt_vnd, repeat_unit_label, theme, AmountInput};
 use crate::models::id_card::jpeg_data_url;
 use crate::views::photo_picker::{use_photo_picker, PhotoInput};
@@ -188,6 +188,10 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
                     if is_new && wallet_id.peek().is_empty() {
                         if let Ok(Some(id)) = SettingsRepo::get_default_wallet_id(conn) {
                             if ws.iter().any(|w| w.id == id) { wallet_id.set(id); }
+                        }
+                        // No usable default: fall back to the first wallet in the Wallets list
+                        if wallet_id.peek().is_empty() {
+                            if let Some(first) = ws.first() { wallet_id.set(first.id.clone()); }
                         }
                     }
                     wallets.set(ws);
@@ -512,34 +516,10 @@ pub fn TransactionForm(view: Signal<TxnView>, editing: Option<Transaction>) -> E
             // ── Category (expense) — above the amount ──
             if *txn_type.read() == TransactionType::Expense {
                 FieldLabel { label: t.t("Category") }
-                div {
-                    style: "display:grid; grid-template-columns:repeat(4, 1fr); gap:12px 8px;",
-                    for c in categories.read().iter() {
-                        {
-                            let cid = c.id.clone();
-                            let selected = *category_id.read() == c.id;
-                            // Always set box-shadow: dropping the declaration leaves the old ring on Android
-                            let ring = if selected { "0 0 0 2px #3f51b5" } else { "none" };
-                            let color = c.color.clone().unwrap_or_else(|| theme::TEXT_MUTED.to_string());
-                            let name = t.tr(&c.name).to_string();
-                            let name_color = if selected { theme::PRIMARY } else { theme::TEXT };
-                            rsx! {
-                                button {
-                                    key: "{c.id}",
-                                    style: "display:flex; flex-direction:column; align-items:center; gap:6px; border:none; background:transparent; padding:0; cursor:pointer; min-width:0;",
-                                    onclick: move |_| { category_id.set(cid.clone()); },
-                                    span {
-                                        style: "display:inline-flex; border-radius:50%; box-shadow:{ring};",
-                                        IconCircle { icon: c.icon.clone(), fallback: IconName::Tag, color, size: 48 }
-                                    }
-                                    span {
-                                        style: "font-size:12px; color:{name_color}; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;",
-                                        "{name}"
-                                    }
-                                }
-                            }
-                        }
-                    }
+                CategoryGrid {
+                    categories: categories.read().clone(),
+                    selected: category_id.read().clone(),
+                    on_select: move |id| category_id.set(id),
                 }
             }
 

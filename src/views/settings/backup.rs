@@ -398,7 +398,7 @@ pub fn BackupSettings() -> Element {
             if !backups.read().is_empty() {
                 div {
                     style: "background:#fff; border-radius:0; padding:16px;",
-                    h2 { style: "margin:0 0 8px; font-size:14px; font-weight:600; color:{theme::TEXT};", {t.t("Saved Backups")} }
+                    h2 { style: "margin:0 0 8px; font-size:13px; font-weight:600; color:{theme::TEXT}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;", {t.t("Saved Backups")} }
                     div { style: "display:flex; flex-direction:column; gap:8px;",
                         for path in backups.read().iter() {
                             BackupFileItem {
@@ -468,28 +468,28 @@ fn BackupFileItem(
 
     rsx! {
         div {
-            style: "display:flex; align-items:center; justify-content:space-between; padding:10px 12px; background:#f7f7fc; border-radius:0;",
+            style: "display:flex; flex-direction:column; gap:6px; padding:8px 10px; background:#f7f7fc; border-radius:0;",
             span {
-                style: "font-size:13px; color:{theme::TEXT}; overflow-wrap:anywhere;",
+                style: "font-size:12px; color:{theme::TEXT}; overflow-wrap:anywhere;",
                 "{filename}"
             }
             div {
-                style: "display:flex; gap:8px;",
+                style: "display:flex; gap:6px; justify-content:flex-end; flex-wrap:nowrap;",
                 button {
-                    style: "padding:6px 12px; border:none; border-radius:999px; background:{theme::NEGATIVE_SOFT}; color:{theme::DANGER}; font-size:12px; font-weight:600; cursor:pointer;",
+                    style: "padding:4px 10px; border:none; border-radius:999px; white-space:nowrap; display:inline-flex; align-items:center; gap:4px; background:{theme::NEGATIVE_SOFT}; color:{theme::DANGER}; font-size:11px; font-weight:600; cursor:pointer;",
                     onclick: move |_| on_import.call(path_clone_import.clone()),
                     {t.t("Revert")}
                 }
                 button {
-                    style: "padding:6px 12px; border:none; border-radius:999px; background:{theme::PRIMARY}; color:#fff; font-size:12px; font-weight:600; cursor:pointer;",
+                    style: "padding:4px 10px; border:none; border-radius:999px; white-space:nowrap; display:inline-flex; align-items:center; gap:4px; background:{theme::PRIMARY}; color:#fff; font-size:11px; font-weight:600; cursor:pointer;",
                     onclick: move |_| on_share.call(path_clone_share.clone()),
-                    Icon { name: IconName::Upload, size: 16, color: "#ffffff".to_string() }
+                    Icon { name: IconName::Upload, size: 14, color: "#ffffff".to_string() }
                     {t.t("Share")}
                 }
                 button {
-                    style: "padding:6px 12px; border:none; border-radius:999px; background:{theme::BG}; color:{theme::TEXT_MUTED}; font-size:12px; font-weight:600; cursor:pointer;",
+                    style: "padding:4px 10px; border:none; border-radius:999px; white-space:nowrap; display:inline-flex; align-items:center; gap:4px; background:{theme::BG}; color:{theme::TEXT_MUTED}; font-size:11px; font-weight:600; cursor:pointer;",
                     onclick: move |_| on_delete.call(path_clone_delete.clone()),
-                    Icon { name: IconName::Trash, size: 16, color: theme::TEXT_MUTED.to_string() }
+                    Icon { name: IconName::Trash, size: 14, color: theme::TEXT_MUTED.to_string() }
                     {t.t("Delete")}
                 }
             }

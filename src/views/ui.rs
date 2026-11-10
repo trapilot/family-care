@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 
 use crate::i18n::use_i18n;
-use crate::models::{Transaction, TransactionType};
+use crate::models::{Category, Transaction, TransactionType};
 use crate::views::gestures::{use_swipe, use_swipe_anchor};
 use crate::views::icons::{emoji_icon, icon_for_emoji, Icon, IconName};
 use crate::views::{fmt_currency, fmt_number, iso_to_display, month_label, theme, ts_to_date_str};
@@ -590,5 +590,46 @@ mod initials_tests {
         assert_eq!(initial("Trần thị đào").as_deref(), Some("Đ"));
         assert_eq!(initial("  "), None);
         assert_eq!(initial("An").as_deref(), Some("A"));
+    }
+}
+
+/// Category picker: a 4-column grid of icon circles with names; the selected one has a ring.
+#[component]
+pub fn CategoryGrid(
+    categories: Vec<Category>,
+    selected: String,
+    on_select: EventHandler<String>,
+) -> Element {
+    let t = use_i18n();
+    rsx! {
+        div {
+            style: "display:grid; grid-template-columns:repeat(4, 1fr); gap:12px 8px;",
+            for c in categories.iter() {
+                {
+                    let cid = c.id.clone();
+                    let is_sel = selected == c.id;
+                    // Always set box-shadow: dropping the declaration leaves the old ring on Android
+                    let ring = if is_sel { "0 0 0 2px #3f51b5" } else { "none" };
+                    let color = c.color.clone().unwrap_or_else(|| theme::TEXT_MUTED.to_string());
+                    let name = t.tr(&c.name).to_string();
+                    let name_color = if is_sel { theme::PRIMARY } else { theme::TEXT };
+                    rsx! {
+                        button {
+                            key: "{c.id}",
+                            style: "display:flex; flex-direction:column; align-items:center; gap:6px; border:none; background:transparent; padding:0; cursor:pointer; min-width:0;",
+                            onclick: move |_| on_select.call(cid.clone()),
+                            span {
+                                style: "display:inline-flex; border-radius:50%; box-shadow:{ring};",
+                                IconCircle { icon: c.icon.clone(), fallback: IconName::Tag, color, size: 48 }
+                            }
+                            span {
+                                style: "font-size:12px; color:{name_color}; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;",
+                                "{name}"
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }

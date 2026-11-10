@@ -5,7 +5,7 @@ use std::str::FromStr;
 
 use crate::app::AppState;
 use crate::models::{Category, NewCategory};
-use crate::repository::CategoryRepo;
+use crate::repository::{CategoryRepo, SettingsRepo};
 use crate::views::AmountInput;
 use crate::views::icons::{Icon, IconName};
 use crate::views::theme;
@@ -19,13 +19,16 @@ pub fn CategoriesSettings() -> Element {
     let state = use_context::<AppState>();
     let mode  = use_signal(|| CatMode::List);
     let cats  = use_signal(|| vec![]);
+    let default_id = use_signal(String::new);
 
     let load = {
         let state = state.clone();
         let mut cats = cats.clone();
+        let mut default_id = default_id.clone();
         move || {
             state.with_conn(|conn| {
                 if let Ok(list) = CategoryRepo::list(conn) { cats.set(list); }
+                default_id.set(SettingsRepo::get_default_category_id(conn).ok().flatten().unwrap_or_default());
             });
         }
     };
@@ -37,9 +40,31 @@ pub fn CategoriesSettings() -> Element {
         }
     });
 
+    let on_toggle_default = {
+        let state = state.clone();
+        let mut default_id = default_id.clone();
+        move |id: String| {
+            let is_current = id == *default_id.peek();
+            let result = state.with_conn(|conn| {
+                SettingsRepo::set_default_category_id(conn, if is_current { None } else { Some(id.as_str()) })
+            });
+            if result.is_ok() {
+                default_id.set(if is_current { String::new() } else { id });
+            }
+        }
+    };
+
     let current_mode = mode.read().clone();
     match current_mode {
-        CatMode::List => rsx! { CatList { cats: cats.read().clone(), mode, on_reload: load } },
+        CatMode::List => rsx! {
+            CatList {
+                cats: cats.read().clone(),
+                mode,
+                default_id: default_id.read().clone(),
+                on_toggle_default,
+                on_reload: load,
+            }
+        },
         CatMode::Add  => rsx! { CatForm { mode, editing: None, on_reload: load } },
         CatMode::Edit(cat) => rsx! { CatForm { mode, editing: Some(cat), on_reload: load } },
     }
@@ -51,6 +76,8 @@ pub fn CategoriesSettings() -> Element {
 fn CatList(
     cats: Vec<Category>,
     mode: Signal<CatMode>,
+    default_id: String,
+    on_toggle_default: EventHandler<String>,
     on_reload: EventHandler<()>,
 ) -> Element {
     let t = use_i18n();
@@ -75,6 +102,8 @@ fn CatList(
                 }
             }
 
+            div { style: "font-size:12px; color:{theme::TEXT_MUTED};", {t.t("Tap ☆ to pick the category filled in for new transactions.")} }
+
             // ── User categories ──
             if !user_cats.is_empty() {
                 div {
@@ -83,6 +112,11 @@ fn CatList(
                     for cat in user_cats.iter() {
                         CatRow {
                             cat: (*cat).clone(),
+                            is_default: cat.id == default_id,
+                            on_toggle_default: {
+                                let id = cat.id.clone();
+                                move |_| on_toggle_default.call(id.clone())
+                            },
                             on_edit: {
                                 let c = (*cat).clone();
                                 move |_| { mode.set(CatMode::Edit(c.clone())); }
@@ -104,6 +138,11 @@ fn CatList(
                     for cat in system_cats.iter() {
                         CatRow {
                             cat: (*cat).clone(),
+                            is_default: cat.id == default_id,
+                            on_toggle_default: {
+                                let id = cat.id.clone();
+                                move |_| on_toggle_default.call(id.clone())
+                            },
                             on_edit: move |_| {},
                             on_delete: move |_| {}
                         }
@@ -306,6 +345,8 @@ fn CatForm(
 #[component]
 fn CatRow(
     cat: Category,
+    is_default: bool,
+    on_toggle_default: EventHandler<MouseEvent>,
     on_edit:   EventHandler<MouseEvent>,
     on_delete: EventHandler<MouseEvent>,
 ) -> Element {
@@ -315,6 +356,7 @@ fn CatRow(
     let budget_label = cat.budget_amount
         .map(|b| format!("{}: {b:.0} ₫", t.t("Budget")))
         .unwrap_or_else(|| t.t("No budget").into());
+    let sub_label = if is_default { format!("{budget_label} · {}", t.t("Default")) } else { budget_label };
 
     rsx! {
         div {
@@ -327,7 +369,17 @@ fn CatRow(
             }
             div { style: "flex:1; min-width:0;",
                 div { style: "font-size:13px; font-weight:600; color:{theme::TEXT};", {t.tr(&cat.name)} }
-                div { style: "font-size:11px; color:{theme::TEXT_MUTED};", "{budget_label}" }
+                div { style: "font-size:11px; color:{theme::TEXT_MUTED};", "{sub_label}" }
+            }
+            button {
+                style: "border:none; background:transparent; cursor:pointer; padding:4px; display:flex;",
+                aria_label: t.t("Default category"),
+                onclick: move |e| { on_toggle_default.call(e); },
+                if is_default {
+                    Icon { name: IconName::StarFilled, size: 18, color: "#f59e0b".to_string() }
+                } else {
+                    Icon { name: IconName::Star, size: 18, color: theme::TEXT_MUTED.to_string() }
+                }
             }
             if !cat.is_system {
                 button {
