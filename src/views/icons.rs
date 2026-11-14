@@ -168,6 +168,7 @@ pub fn icon_for_emoji(emoji: &str) -> Option<IconName> {
         "💧" => IconName::Droplet,
         "📶" => IconName::Wifi,
         "🎓" => IconName::GraduationCap,
+        "🧾" => IconName::Receipt,
         "🩺" => IconName::Stethoscope,
         "🛡" => IconName::Shield,
         _ => return None,

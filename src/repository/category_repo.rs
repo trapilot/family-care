@@ -143,7 +143,9 @@ impl CategoryRepo {
     }
 
     /// Add every default category not there yet (matched by name), so defaults added in a
-    /// later version reach existing databases too. System categories can't be deleted.
+    /// later version reach existing databases too. Existing system rows get their `sort_order`
+    /// and `icon` synced from the defaults (they are read-only for the user, so no user choice is
+    /// overwritten). System categories can't be deleted.
     pub fn seed_defaults(conn: &Connection) -> Result<()> {
         for cat in crate::models::category::default_categories() {
             let exists: bool = conn.query_row(
@@ -151,9 +153,43 @@ impl CategoryRepo {
                 [&cat.name],
                 |row| row.get(0),
             )?;
-            if !exists {
+            if exists {
+                conn.execute(
+                    "UPDATE categories SET sort_order = ?1, icon = ?2 WHERE is_system = 1 AND name = ?3",
+                    rusqlite::params![cat.sort_order, cat.icon, cat.name],
+                )?;
+            } else {
                 Self::create_system(conn, &cat)?;
             }
+        }
+        Self::retire_system_category(conn, "Other")?;
+        Ok(())
+    }
+
+    /// Drop a system category that is no longer a default. If transactions or sub-categories
+    /// still use it, keep it as a regular (user-editable, deletable) category instead.
+    fn retire_system_category(conn: &Connection, name: &str) -> Result<()> {
+        let Some(id) = conn
+            .query_row(
+                "SELECT id FROM categories WHERE is_system = 1 AND name = ?1",
+                [name],
+                |row| row.get::<_, String>(0),
+            )
+            .ok()
+        else {
+            return Ok(());
+        };
+        let in_use: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM transactions WHERE category_id = ?1)
+                 OR EXISTS(SELECT 1 FROM categories WHERE parent_id = ?1)",
+            [&id],
+            |row| row.get(0),
+        )?;
+        if in_use {
+            conn.execute("UPDATE categories SET is_system = 0 WHERE id = ?1", [&id])?;
+        } else {
+            conn.execute("DELETE FROM categories WHERE id = ?1", [&id])?;
+            SettingsRepo::clear_default_category_if(conn, &id)?;
         }
         Ok(())
     }
@@ -187,5 +223,61 @@ mod tests {
         let names: Vec<String> = CategoryRepo::list(&conn).unwrap().into_iter().map(|c| c.name).collect();
         assert_eq!(names.len(), total);
         assert_eq!(names.iter().filter(|n| *n == "Family Support").count(), 1);
+
+        // An older database with Bills at the old position/icon is synced to the new defaults
+        conn.execute("UPDATE categories SET sort_order = 7, icon = '🏠' WHERE name = 'Bills'", []).unwrap();
+        CategoryRepo::seed_defaults(&conn).unwrap();
+        let list = CategoryRepo::list(&conn).unwrap();
+        let bills = list.iter().find(|c| c.name == "Bills").unwrap();
+        assert_eq!(bills.sort_order, 26);
+        assert_eq!(bills.icon.as_deref(), Some("🧾"));
+
+        // The six fixed monthly categories come last, in order
+        let tail: Vec<&str> = list[list.len() - 6..].iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(
+            tail,
+            ["Electric bill", "Water bill", "Rent", "Internet bill", "School fees", "Bills"]
+        );
+    }
+
+    fn insert_old_other(conn: &Connection) -> String {
+        conn.execute(
+            "INSERT INTO categories (id, name, icon, color, sort_order, is_system, created_at)
+             VALUES ('old-other', 'Other', '📦', '#D3D3D3', 12, 1, 0)",
+            [],
+        )
+        .unwrap();
+        "old-other".into()
+    }
+
+    #[test]
+    fn seeding_removes_unused_other_category() {
+        let conn = Connection::open_in_memory().unwrap();
+        crate::db::migrations::run(&conn).unwrap();
+        insert_old_other(&conn);
+
+        CategoryRepo::seed_defaults(&conn).unwrap();
+        let list = CategoryRepo::list(&conn).unwrap();
+        assert!(list.iter().all(|c| c.name != "Other"));
+        assert!(list.iter().any(|c| c.name == "Gift" && c.is_system));
+    }
+
+    #[test]
+    fn seeding_keeps_used_other_category_as_user_category() {
+        let conn = Connection::open_in_memory().unwrap();
+        crate::db::migrations::run(&conn).unwrap();
+        let id = insert_old_other(&conn);
+        conn.execute("INSERT INTO wallets (id, name, wallet_type, created_at) VALUES ('w', 'Cash', 'cash', 0)", [])
+            .unwrap();
+        conn.execute(
+            "INSERT INTO transactions (id, txn_type, wallet_id, amount, currency, category_id, txn_date, created_at)
+             VALUES ('t', 'expense', 'w', 1, 'VND', ?1, 0, 0)",
+            [&id],
+        )
+        .unwrap();
+
+        CategoryRepo::seed_defaults(&conn).unwrap();
+        let other = CategoryRepo::find_by_id(&conn, &id).unwrap().expect("kept because it is in use");
+        assert!(!other.is_system);
     }
 }

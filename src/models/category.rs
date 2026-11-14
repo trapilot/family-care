@@ -52,18 +52,32 @@ pub struct NewCategory {
 
 /// System default categories seeded on first launch
 pub fn default_categories() -> Vec<NewCategory> {
+    let cat = |name: &str, icon: &str, color: &str, sort_order: i32| NewCategory {
+        name: name.into(),
+        icon: Some(icon.into()),
+        color: Some(color.into()),
+        budget_amount: None,
+        parent_id: None,
+        sort_order,
+    };
     vec![
-        NewCategory { name: "Food & Drinks".into(),      icon: Some("🍜".into()), color: Some("#FF6B6B".into()), budget_amount: None, parent_id: None, sort_order: 1  },
-        NewCategory { name: "Transport".into(),          icon: Some("🚗".into()), color: Some("#4ECDC4".into()), budget_amount: None, parent_id: None, sort_order: 2  },
-        NewCategory { name: "Shopping".into(),           icon: Some("🛍️".into()), color: Some("#45B7D1".into()), budget_amount: None, parent_id: None, sort_order: 3  },
-        NewCategory { name: "Health".into(),             icon: Some("💊".into()), color: Some("#96CEB4".into()), budget_amount: None, parent_id: None, sort_order: 4  },
-        NewCategory { name: "Entertainment".into(),      icon: Some("🎮".into()), color: Some("#FFEAA7".into()), budget_amount: None, parent_id: None, sort_order: 5  },
-        NewCategory { name: "Education".into(),          icon: Some("📚".into()), color: Some("#DDA0DD".into()), budget_amount: None, parent_id: None, sort_order: 6  },
-        NewCategory { name: "Bills".into(),              icon: Some("🏠".into()), color: Some("#F0E68C".into()), budget_amount: None, parent_id: None, sort_order: 7  },
-        NewCategory { name: "Cosmetics".into(),          icon: Some("💄".into()), color: Some("#FFB6C1".into()), budget_amount: None, parent_id: None, sort_order: 8  },
-        NewCategory { name: "Household Goods".into(),    icon: Some("🧺".into()), color: Some("#C3B091".into()), budget_amount: None, parent_id: None, sort_order: 9  },
-        NewCategory { name: "Travel".into(),             icon: Some("✈️".into()), color: Some("#87CEEB".into()), budget_amount: None, parent_id: None, sort_order: 10 },
-        NewCategory { name: "Family Support".into(),     icon: Some("🤲".into()), color: Some("#F4A261".into()), budget_amount: None, parent_id: None, sort_order: 11 },
-        NewCategory { name: "Other".into(),              icon: Some("📦".into()), color: Some("#D3D3D3".into()), budget_amount: None, parent_id: None, sort_order: 12 },
+        cat("Food & Drinks",   "🍜",  "#FF6B6B", 1),
+        cat("Transport",       "🚗",  "#4ECDC4", 2),
+        cat("Shopping",        "🛍️", "#45B7D1", 3),
+        cat("Health",          "💊",  "#96CEB4", 4),
+        cat("Entertainment",   "🎮",  "#FFEAA7", 5),
+        cat("Education",       "📚",  "#DDA0DD", 6),
+        cat("Cosmetics",       "💄",  "#FFB6C1", 7),
+        cat("Household Goods", "🧺",  "#C3B091", 8),
+        cat("Travel",          "✈️", "#87CEEB", 9),
+        cat("Family Support",  "🤲",  "#F4A261", 10),
+        cat("Gift",            "🎁",  "#E91E63", 11),
+        // Fixed monthly costs: named "Tiền …" in Vietnamese and kept last
+        cat("Electric bill",   "⚡",  "#f59e0b", 21),
+        cat("Water bill",      "💧",  "#06b6d4", 22),
+        cat("Rent",            "🏠",  "#8b5cf6", 23),
+        cat("Internet bill",   "📶",  "#3f51b5", 24),
+        cat("School fees",     "🎓",  "#DDA0DD", 25),
+        cat("Bills",           "🧾",  "#F0E68C", 26),
     ]
 }
