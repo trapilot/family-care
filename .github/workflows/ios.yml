@@ -16,6 +16,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-ios
+          # dx strips release binaries with rust-objcopy (rustc component), which needs
+          # libLLVM.dylib from the llvm-tools component on macOS.
+          components: llvm-tools
 
       - name: Install Dioxus CLI
         run: cargo install dioxus-cli --locked
