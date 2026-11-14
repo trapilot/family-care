@@ -258,7 +258,7 @@ Income types:
 wallet.balance -= amount
 ```
 
-Expense categories (defaults, editable): Food & Drinks, Transport, Shopping, Health, Entertainment, Education, Bills, Cosmetics, Household Goods, Travel, Family Support, Other.
+Expense categories (defaults, editable): Food & Drinks, Transport, Shopping, Health, Entertainment, Education, Bills, Cosmetics, Household Goods, Travel, Family Support, Gift, plus fixed monthly costs (Electric bill, Water bill, Rent, Internet bill, School fees). Add as many custom categories as you need.
 
 ### Opening Balance
 
